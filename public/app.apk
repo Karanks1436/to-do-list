@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Download To-Do App</title>
+  <style>
+    body { font-family: Arial; text-align:center; padding: 50px; background:#f7f7f7; }
+    button {
+      background:#4285F4;
+      color:white;
+      padding:15px 30px;
+      border:none;
+      border-radius:8px;
+      font-size:20px;
+      cursor:pointer;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Your To-Do App</h1>
+  <p>Click below to download APK:</p>
+  <a href="app.apk" download>
+    <button>📥 Download App</button>
+  </a>
+</body>
+</html>

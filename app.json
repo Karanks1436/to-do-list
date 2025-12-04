@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "to-do-list",
+    "name": "KS14 ToDo List",
     "slug": "to-do-list",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "https://i.pinimg.com/736x/5e/81/9a/5e819a5ce865476b73087fd1276e7c3e.jpg",
     "scheme": "todolist",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.karanks1436.todolist"
     },
     "web": {
       "output": "static",
@@ -43,6 +44,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d54e2e00-246d-40d2-97ec-24f89301e026"
+      }
     }
   }
 }

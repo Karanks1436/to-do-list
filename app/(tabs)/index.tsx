@@ -1,98 +1,75 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+// app/index.tsx
+import React, { useState } from "react";
+import { View, Text, TextInput, Button, FlatList, StyleSheet, ActivityIndicator } from "react-native";
+import TodoItem from "@/components/TodoItem"; 
+import { useAuth } from "@/hooks/useAuth"; 
+import { useTodos } from "@/hooks/useTodos";
+import LoginButton from "@/components/LoginButton"; 
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function Index() {
+  const { user } = useAuth();
+  const { todos, addTodo, toggleTodo, deleteTodo } = useTodos();
 
-export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+  const [task, setTask] = useState("");
+
+  if (!user) {
+    // Show login UI + optional demo info
+    return (
+      <View style={styles.container}>
+        <Text style={styles.header}>To-Do List (Sign in required)</Text>
+        <LoginButton />
+        <Text style={{ marginTop: 10, color: "#666" }}>
+          Sign in with Google to persist your tasks to the cloud.
+        </Text>
+      </View>
+    );
+  }
+
+ return (
+  <View style={styles.container}>
+    <Text style={styles.header}>Your To-Dos</Text>
+
+    <LoginButton />
+
+    <View style={styles.inputRow}>
+      <TextInput
+        placeholder="Enter task..."
+        value={task}
+        onChangeText={setTask}
+        style={styles.input}
+      />
+      <Button title="Add" onPress={async () => {
+        await addTodo(task);
+        setTask("");
+      }} />
+    </View>
+
+    <FlatList
+      data={todos}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => (
+        <TodoItem
+          text={item.text}
+          completed={item.completed}
+          onToggle={() => toggleTodo(item.id)}
+          onDelete={() => deleteTodo(item.id)}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+      )}
+    />
+  </View>
+);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
-  );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  container: { flex: 1, padding: 20, backgroundColor: "#F5F5F5" },
+  header: { fontSize: 24, fontWeight: "700", marginBottom: 12, textAlign: "center" },
+  inputRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    paddingHorizontal: 10,
   },
 });
