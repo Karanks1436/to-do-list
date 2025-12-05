@@ -1,75 +1,85 @@
-// app/index.tsx
 import React, { useState } from "react";
-import { View, Text, TextInput, Button, FlatList, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, FlatList, StyleSheet } from "react-native";
 import TodoItem from "@/components/TodoItem"; 
 import { useAuth } from "@/hooks/useAuth"; 
 import { useTodos } from "@/hooks/useTodos";
 import LoginButton from "@/components/LoginButton"; 
+import AppBar from "@/components/AppBar";
+import Profile from "@/app/(tabs)/Profile";
+import TodoList from "@/app/(tabs)/TodoList"; // your TodoList component
 
-export default function Index() {
-  const { user } = useAuth();
-  const { todos, addTodo, toggleTodo, deleteTodo } = useTodos();
-
-  const [task, setTask] = useState("");
-
-  if (!user) {
-    // Show login UI + optional demo info
-    return (
-      <View style={styles.container}>
-        <Text style={styles.header}>To-Do List (Sign in required)</Text>
-        <LoginButton />
-        <Text style={{ marginTop: 10, color: "#666" }}>
-          Sign in with Google to persist your tasks to the cloud.
-        </Text>
-      </View>
-    );
-  }
-
- return (
-  <View style={styles.container}>
-    <Text style={styles.header}>Your To-Dos</Text>
-
-    <LoginButton />
-
-    <View style={styles.inputRow}>
-      <TextInput
-        placeholder="Enter task..."
-        value={task}
-        onChangeText={setTask}
-        style={styles.input}
-      />
-      <Button title="Add" onPress={async () => {
-        await addTodo(task);
-        setTask("");
-      }} />
-    </View>
-
-    <FlatList
-      data={todos}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <TodoItem
-          text={item.text}
-          completed={item.completed}
-          onToggle={() => toggleTodo(item.id)}
-          onDelete={() => deleteTodo(item.id)}
-        />
-      )}
-    />
+const LogoutScreen = () => (
+  <View style={styles.screen}>
+    <Text style={styles.screenText}>🚪 You are logged out</Text>
   </View>
 );
 
+export default function Home() {
+  const { user, logout } = useAuth();
+  const { todos, toggleTodo, deleteTodo } = useTodos();
+  const [activeTab, setActiveTab] = useState<"list" | "profile" | "todo" | "logout">("list");
+
+  const handleLogout = async () => {
+    await logout();
+    setActiveTab("logout");
+  };
+
+  
+      const renderContent = () => {
+        if (!user && activeTab !== "logout") {
+          return (
+            <View style={styles.screen}>
+              <LoginButton />
+              <Text style={{ marginTop: 10, color: "#666" }}>
+                Please log in to view your tasks.
+              </Text>
+            </View>
+          );
+        }
+    
+        switch (activeTab) {
+          case "list":
+            return (
+              <View style={{ flex: 1 }}>
+                <Text style={styles.header}>Your Tasks</Text>
+                {todos.length === 0 ? (
+                  <Text style={styles.noTasks}>No tasks available</Text>
+                ) : (
+                  <FlatList
+                    data={todos}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => (
+                      <TodoItem
+                        text={item.text}
+                        completed={item.completed}
+                        onToggle={() => toggleTodo(item.id)}
+                        onDelete={() => deleteTodo(item.id)}
+                      />
+                    )}
+                  />
+                )}
+              </View>
+            );
+          case "profile":
+            return <Profile />;
+          case "todo":
+            return <TodoList />;
+          case "logout":
+            return <LogoutScreen />;
+        }
+      };
+  return (
+    <View style={styles.container}>
+      <AppBar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+      <View style={{ flex: 1, marginTop: 20 }}>{renderContent()}</View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#F5F5F5" },
+  container: { flex: 1, backgroundColor: "#F5F5F5" },
   header: { fontSize: 24, fontWeight: "700", marginBottom: 12, textAlign: "center" },
-  inputRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-  },
+  noTasks: { textAlign: "center", marginTop: 20, color: "#777", fontSize: 16 },
+  screen: { flex: 1, justifyContent: "center", alignItems: "center" },
+  screenText: { fontSize: 26, fontWeight: "600", color: "#333" },
 });

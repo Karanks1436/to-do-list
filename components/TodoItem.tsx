@@ -16,7 +16,7 @@ export default function TodoItem({ text, completed, onToggle, onDelete }: Props)
         onValueChange={onToggle}
         trackColor={{ false: "#ccc", true: "#4CAF50" }}
         thumbColor={completed ? "#fff" : "#fff"}
-      />
+        />
       <Text style={[styles.text, completed && styles.completedText]}>{text}</Text>
       <TouchableOpacity onPress={onDelete}>
         <Text style={styles.delete}>✕</Text>

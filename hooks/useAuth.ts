@@ -1,47 +1,5 @@
-// import { useEffect, useState } from "react";
-// import * as Google from "expo-auth-session/providers/google";
-// import * as WebBrowser from "expo-web-browser";
-// import { GoogleAuthProvider, signInWithCredential, onAuthStateChanged, signOut } from "firebase/auth";
-// import { auth } from "@/app/(tabs)/firebase"; 
-
-// WebBrowser.maybeCompleteAuthSession();
-
-// export function useAuth() {
-//   const [user, setUser] = useState<any>(null);
-
-//   // Google auth request
-//   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-//     clientId: "221918419834-af1aedla1nd7q1uohgo54u8eub4ns8d3.apps.googleusercontent.com",
-//     androidClientId: "<YOUR_ANDROID_CLIENT_ID>",
-//     iosClientId: "<YOUR_IOS_CLIENT_ID>",
-//     webClientId: "221918419834-af1aedla1nd7q1uohgo54u8eub4ns8d3.apps.googleusercontent.com",
-//   });
-
-//   // When sign-in response comes back
-//   useEffect(() => {
-//     if (response?.type === "success") {
-//       const { id_token } = response.params;
-//       const credential = GoogleAuthProvider.credential(id_token);
-//       signInWithCredential(auth, credential).catch(console.error);
-//     }
-//   }, [response]);
-
-//   // Track logged in user
-//   useEffect(() => {
-//     const unsubscribe = onAuthStateChanged(auth, (user) => setUser(user));
-//     return unsubscribe;
-//   }, []);
-
-//   return {
-//     user,
-//     login: () => promptAsync(), // 👈 FIXED
-//     logout: () => signOut(auth),
-//     request,
-//   };
-// }
-
 import { useEffect, useState } from "react";
-import { auth } from "@/app/(tabs)/firebase";
+import { auth, db } from "@/app/(tabs)/firebase"; // db = Firestore instance
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -49,41 +7,71 @@ import {
   onAuthStateChanged,
   User,
 } from "firebase/auth";
+import { doc, setDoc, getDoc } from "firebase/firestore";
+
+interface ExtraUserData {
+  name?: string;
+  contact?: string;
+}
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
+  const [extraData, setExtraData] = useState<ExtraUserData>({});
+  const [loading, setLoading] = useState(true);
 
-  // Track logged-in user
+  // Track auth state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (u) {
+        // Fetch extra data from Firestore
+        const docRef = doc(db, "Appusers", u.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setExtraData(docSnap.data() as ExtraUserData);
+        } else {
+          setExtraData({});
+        }
+      } else {
+        setExtraData({});
+      }
+      setLoading(false);
+    });
     return unsubscribe;
   }, []);
 
   const login = async (email: string, password: string) => {
-    try {
-      return await signInWithEmailAndPassword(auth, email, password);
-    } catch (err) {
-      console.error("Login error:", err);
-      throw err;
-    }
+    const u = await signInWithEmailAndPassword(auth, email, password);
+    setUser(u.user);
+
+    // fetch extra data
+    const docRef = doc(db, "Appusers", u.user.uid);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) setExtraData(docSnap.data() as ExtraUserData);
+
+    return u.user;
   };
 
-  const signup = async (email: string, password: string) => {
-    try {
-      return await createUserWithEmailAndPassword(auth, email, password);
-    } catch (err) {
-      console.error("Signup error:", err);
-      throw err;
-    }
+  const signup = async (
+    email: string,
+    password: string,
+    data: { name: string; contact: string }
+  ) => {
+    const u = await createUserWithEmailAndPassword(auth, email, password);
+    setUser(u.user);
+
+    // Save extra data to Firestore
+    await setDoc(doc(db, "Appusers", u.user.uid), data);
+
+    setExtraData(data);
+    return u.user;
   };
 
   const logout = async () => {
-    try {
-      await signOut(auth);
-    } catch (err) {
-      console.error("Logout error:", err);
-    }
+    await signOut(auth);
+    setUser(null);
+    setExtraData({});
   };
 
-  return { user, login, signup, logout };
+  return { user, extraData, loading, login, signup, logout };
 }
