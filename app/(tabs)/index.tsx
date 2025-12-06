@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { View, Text, FlatList, StyleSheet } from "react-native";
 import TodoItem from "@/components/TodoItem"; 
 import { useAuth } from "@/hooks/useAuth"; 
@@ -6,7 +6,7 @@ import { useTodos } from "@/hooks/useTodos";
 import LoginButton from "@/components/LoginButton"; 
 import AppBar from "@/components/AppBar";
 import Profile from "@/app/(tabs)/Profile";
-import TodoList from "@/app/(tabs)/TodoList"; // your TodoList component
+import TodoList from "@/app/(tabs)/TodoList";
 
 const LogoutScreen = () => (
   <View style={styles.screen}>
@@ -24,50 +24,58 @@ export default function Home() {
     setActiveTab("logout");
   };
 
-  
-      const renderContent = () => {
-        if (!user && activeTab !== "logout") {
-          return (
-            <View style={styles.screen}>
-              <LoginButton />
-              <Text style={{ marginTop: 10, color: "#666" }}>
-                Please log in to view your tasks.
-              </Text>
-            </View>
-          );
-        }
-    
-        switch (activeTab) {
-          case "list":
-            return (
-              <View style={{ flex: 1 }}>
-                <Text style={styles.header}>Your Tasks</Text>
-                {todos.length === 0 ? (
-                  <Text style={styles.noTasks}>No tasks available</Text>
-                ) : (
-                  <FlatList
-                    data={todos}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
-                      <TodoItem
-                        text={item.text}
-                        completed={item.completed}
-                        onToggle={() => toggleTodo(item.id)}
-                        onDelete={() => deleteTodo(item.id)}
-                      />
-                    )}
+  // 👇 SORT TASKS: pending first, completed below
+  const sortedTodos = useMemo(() => {
+    return [...todos].sort((a, b) => Number(a.completed) - Number(b.completed));
+  }, [todos]);
+
+  const renderContent = () => {
+    if (!user && activeTab !== "logout") {
+      return (
+        <View style={styles.screen}>
+          <LoginButton />
+          <Text style={{ marginTop: 10, color: "#666" }}>
+            Please log in to view your tasks.
+          </Text>
+        </View>
+      );
+    }
+
+    switch (activeTab) {
+      case "list":
+        return (
+          <View style={{ flex: 1 }}>
+            <Text style={styles.header}>Your Tasks</Text>
+
+            {todos.length === 0 ? (
+              <Text style={styles.noTasks}>No tasks available</Text>
+            ) : (
+              <FlatList
+                data={sortedTodos}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TodoItem
+                    text={item.text}
+                    completed={item.completed}
+                    statusColor={item.completed ? "#4CAF50" : "#FF4B4B"} // green if done, red if pending
+                    onToggle={() => toggleTodo(item.id)}
+                    onDelete={() => deleteTodo(item.id)}
                   />
                 )}
-              </View>
-            );
-          case "profile":
-            return <Profile />;
-          case "todo":
-            return <TodoList />;
-          case "logout":
-            return <LogoutScreen />;
-        }
-      };
+              />
+            )}
+          </View>
+        );
+
+      case "profile":
+        return <Profile />;
+      case "todo":
+        return <TodoList />;
+      case "logout":
+        return <LogoutScreen />;
+    }
+  };
+
   return (
     <View style={styles.container}>
       <AppBar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />

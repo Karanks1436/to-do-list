@@ -1,26 +1,39 @@
-import React, { useState } from "react";
+
+import React, { useEffect, useState } from "react";
 import { View, Text, TextInput, Button, FlatList, StyleSheet } from "react-native";
 import { useTodos } from "@/hooks/useTodos";
 import { useAuth } from "@/hooks/useAuth";
+import TodoItem from "@/components/TodoItem";
+import { registerForPushNotificationsAsync, scheduleHourlyReminder } from "@/utils/notifications";
 
 export default function TodoList() {
   const { user } = useAuth();
-  const { todos, addTodo } = useTodos(); // Only keep addTodo
+  const { todos, addTodo } = useTodos();
   const [task, setTask] = useState("");
+
+  // Request notification access once
+  useEffect(() => {
+    registerForPushNotificationsAsync();
+  }, []);
+
+  // Auto schedule reminder when tasks list updates
+  useEffect(() => {
+    const pendingCount = todos.filter(t => !t.completed).length;
+    scheduleHourlyReminder(pendingCount);
+  }, [todos]);
 
   if (!user) {
     return (
       <View style={styles.container}>
-        <Text style={styles.header}>Sign in to see your tasks</Text>
+        <Text style={styles.header}>Please sign in to manage your tasks</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Your To-Dos</Text>
+      <Text style={styles.header}>My Tasks</Text>
 
-      {/* Input Row */}
       <View style={styles.inputRow}>
         <TextInput
           placeholder="Enter task..."
@@ -31,23 +44,17 @@ export default function TodoList() {
         <Button
           title="Add"
           onPress={async () => {
-            if (task.trim()) {
-              await addTodo(task.trim());
-              setTask("");
-            }
+            if (!task.trim()) return;
+            await addTodo(task);
+            setTask("");
           }}
         />
       </View>
 
-      {/* Show all tasks */}
       <FlatList
         data={todos}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.taskItem}>
-            <Text style={styles.taskText}>{item.text}</Text>
-          </View>
-        )}
+        renderItem={({ item }) => <TodoItem text={item.text} />}
       />
     </View>
   );
@@ -55,24 +62,7 @@ export default function TodoList() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: "#F5F5F5" },
-  header: { fontSize: 22, fontWeight: "700", marginBottom: 12, textAlign: "center" },
-  inputRow: { flexDirection: "row", marginBottom: 20 },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    marginRight: 10, // spacing between input and button
-  },
-  taskItem: {
-    padding: 12,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  taskText: {
-    fontSize: 16,
-    color: "#333",
-  },
+  header: { fontSize: 22, fontWeight: "600", marginBottom: 12, textAlign: "center" },
+  inputRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
+  input: { flex: 1, borderWidth: 1, borderColor: "#ccc", borderRadius: 8, paddingHorizontal: 10, backgroundColor: "#fff" },
 });
