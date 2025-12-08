@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState,useEffect, useMemo } from "react";
 import { View, Text, FlatList, StyleSheet } from "react-native";
 import TodoItem from "@/components/TodoItem"; 
 import { useAuth } from "@/hooks/useAuth"; 
@@ -7,6 +7,8 @@ import LoginButton from "@/components/LoginButton";
 import AppBar from "@/components/AppBar";
 import Profile from "@/app/(tabs)/Profile";
 import TodoList from "@/app/(tabs)/TodoList";
+import { setupNotificationPermissions } from "@/utils/notifications";
+import { registerBackgroundTask } from "@/utils/backgroundTask";
 
 const LogoutScreen = () => (
   <View style={styles.screen}>
@@ -18,6 +20,14 @@ export default function Home() {
   const { user, logout } = useAuth();
   const { todos, toggleTodo, deleteTodo } = useTodos();
   const [activeTab, setActiveTab] = useState<"list" | "profile" | "todo" | "logout">("list");
+
+  useEffect(() => {
+  (async () => {
+    await setupNotificationPermissions();
+    await registerBackgroundTask();
+  })();
+}, []);
+
 
   const handleLogout = async () => {
     await logout();

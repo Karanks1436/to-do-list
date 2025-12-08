@@ -70,13 +70,20 @@ export default function LoginButton() {
               value={name}
               onChangeText={setName}
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Contact"
-              value={contact}
-              onChangeText={setContact}
-              keyboardType="phone-pad"
-            />
+         <TextInput
+  style={styles.input}
+  placeholder="Contact"
+  value={contact}
+  onChangeText={(text) => {
+    const cleaned = text.replace(/[^0-9]/g, ""); // only numbers allowed
+    if (cleaned.length <= 10) {
+      setContact(cleaned);
+    }
+  }}
+  keyboardType="phone-pad"
+  maxLength={10} // extra safety
+/>
+
           </>
         )}
 
@@ -166,12 +173,13 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "grey",
     padding: 12,
     marginBottom: 15,
     borderRadius: 10,
     fontSize: 16,
-    backgroundColor: "#FAFAFA",
+    color:"blue",
+    backgroundColor: "white",
   },
   passwordWrapper: {
     flexDirection: "row",

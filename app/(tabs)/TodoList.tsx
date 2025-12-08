@@ -4,7 +4,9 @@ import { View, Text, TextInput, Button, FlatList, StyleSheet } from "react-nativ
 import { useTodos } from "@/hooks/useTodos";
 import { useAuth } from "@/hooks/useAuth";
 import TodoItem from "@/components/TodoItem";
+// import { registerForPushNotificationsAsync, scheduleHourlyReminder } from "@/utils/notifications";
 import { registerForPushNotificationsAsync, scheduleHourlyReminder } from "@/utils/notifications";
+
 
 export default function TodoList() {
   const { user } = useAuth();
@@ -19,8 +21,21 @@ export default function TodoList() {
   // Auto schedule reminder when tasks list updates
   useEffect(() => {
     const pendingCount = todos.filter(t => !t.completed).length;
-    scheduleHourlyReminder(pendingCount);
+    scheduleHourlyReminder();
   }, [todos]);
+
+useEffect(() => {
+  (async () => {
+    const token = await registerForPushNotificationsAsync();
+    console.log("Expo Push Token:", token);
+
+    // TEST: schedule reminder only once
+    await scheduleHourlyReminder("Stay productive! 🚀");
+
+  })();
+}, []);
+
+
 
   if (!user) {
     return (
