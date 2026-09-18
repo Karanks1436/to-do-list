@@ -1,18 +1,17 @@
-
-import { useState, useEffect } from "react";
-import { db } from "@/app/(tabs)/firebase";
+import { db } from "@/src/firebase/firebase";
 import {
-  collection,
-  addDoc,
-  doc,
-  onSnapshot,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  QuerySnapshot,
-  DocumentData,
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    DocumentData,
+    onSnapshot,
+    query,
+    QuerySnapshot,
+    updateDoc,
+    where,
 } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import { useAuth } from "../hooks/useAuth"; // our login/signup hook
 
 export interface Todo {
@@ -35,14 +34,17 @@ export const useTodos = () => {
     // query to filter todos by user's email
     const q = query(colRef, where("email", "==", user.email));
 
-    const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-      const todosData: Todo[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        text: doc.data().text,
-        completed: doc.data().completed,
-      }));
-      setTodos(todosData);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot: QuerySnapshot<DocumentData>) => {
+        const todosData: Todo[] = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          text: doc.data().text,
+          completed: doc.data().completed,
+        }));
+        setTodos(todosData);
+      },
+    );
 
     return unsubscribe;
   }, [user]);
@@ -64,7 +66,7 @@ export const useTodos = () => {
 
   const toggleTodo = async (id: string) => {
     try {
-      const todo = todos.find(t => t.id === id);
+      const todo = todos.find((t) => t.id === id);
       if (!todo) return;
       const docRef = doc(db, COLLECTION_NAME, id);
       await updateDoc(docRef, { completed: !todo.completed });

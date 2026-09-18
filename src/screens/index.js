@@ -1,0 +1,17 @@
+// export{default as SplashScreen}from'./SplashScreen';export{default as AuthScreen}from'./AuthScreen';export{default as HomeScreen}from'./HomeScreen';export{default as ScanScreen}from'./ScanScreen';export{default as ResultScreen}from'./ResultScreen';export{default as QuantityScreen}from'./QuantityScreen';export{default as CollectorsScreen}from'./CollectorsScreen';export{default as TrackingScreen}from'./TrackingScreen';export{default as HistoryScreen}from'./HistoryScreen';export{default as ProfileScreen}from'./ProfileScreen';export{default as WalletScreen}from'./WalletScreen';export{default as ImpactScreen}from'./ImpactScreen';export{default as SettingsScreen}from'./SettingsScreen';export{default as DocumentsScreen}from'./DocumentsScreen';export{default as NotificationsScreen}from'./NotificationsScreen';export{default as CollectorDashboardScreen}from'./CollectorDashboardScreen';export{default as AdminScreen}from'./AdminScreen';
+export { default as SplashScreen } from "./SplashScreen";
+export { default as HomeScreen } from "./HomeScreen";
+export { default as ScanScreen } from "./ScanScreen";
+export { default as ResultScreen } from "./ResultScreen";
+export { default as QuantityScreen } from "./QuantityScreen";
+export { default as CollectorsScreen } from "./CollectorsScreen";
+export { default as TrackingScreen } from "./TrackingScreen";
+export { default as HistoryScreen } from "./HistoryScreen";
+export { default as ProfileScreen } from "./ProfileScreen";
+export { default as WalletScreen } from "./WalletScreen";
+export { default as ImpactScreen } from "./ImpactScreen";
+export { default as SettingsScreen } from "./SettingsScreen";
+export { default as DocumentsScreen } from "./DocumentsScreen";
+export { default as NotificationsScreen } from "./NotificationsScreen";
+export { default as CollectorDashboardScreen } from "./CollectorDashboardScreen";
+export { default as AdminScreen } from "./AdminScreen";

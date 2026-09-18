@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function mine(uid) { return signedIn() && request.auth.uid == uid; }
+    function admin() { return signedIn() && request.auth.token.role == 'admin'; }
+    function approvedCollector() { return signedIn() && request.auth.token.role == 'collector' && request.auth.token.status == 'active'; }
+    function smallBase64(value) { return value is string && value.size() < 955734; }
+
+    match /users/{uid} {
+      allow read: if mine(uid) || admin() || (signedIn() && resource.data.role == 'collector' && resource.data.status == 'active');
+      allow create: if false; // completeRegistration Cloud Function
+      allow update: if mine(uid)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'uid','role','status','walletBalance','greenPoints','recycledKg','collectedKg','completedPickups','approvedBy','approvedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /materials/{id} { allow read: if signedIn(); allow write: if false; }
+    match /currentRates/{id} { allow read: if signedIn(); allow write: if false; }
+    match /monthlyRates/{month}/items/{id} { allow read: if signedIn(); allow write: if false; }
+
+    match /pickupRequests/{id} {
+      allow read: if signedIn() && (
+        resource.data.giverId == request.auth.uid ||
+        resource.data.collectorId == request.auth.uid ||
+        admin() ||
+        (approvedCollector() && resource.data.status == 'open')
+      );
+      allow write: if false; // trusted callable functions only
+    }
+
+    match /transactions/{id} {
+      allow read: if signedIn() && (resource.data.giverId == request.auth.uid || resource.data.collectorId == request.auth.uid || admin());
+      allow write: if false;
+    }
+
+    match /notifications/{id} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || admin());
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create, delete: if false;
+    }
+
+    match /wasteImages/{id} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid
+        && smallBase64(request.resource.data.base64);
+      allow read, delete: if signedIn() && (resource.data.userId == request.auth.uid || admin());
+      allow update: if false;
+    }
+
+    match /collectorDocuments/{uid}/files/{id} {
+      allow create: if mine(uid) && smallBase64(request.resource.data.base64);
+      allow read: if mine(uid) || admin();
+      allow update, delete: if false;
+    }
+
+    match /collectorLocations/{uid} {
+      allow read: if signedIn();
+      allow create, update: if mine(uid) && request.auth.token.role == 'collector';
+      allow delete: if mine(uid) || admin();
+    }
+  }
+}

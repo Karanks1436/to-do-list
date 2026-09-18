@@ -1,0 +1,2 @@
+import React from'react';import{ScrollView,Text}from'react-native';import{Card,Header,Pill}from'../components/UI';import{s}from'../styles';
+export default function NotificationsScreen({go,items=[]}){return <ScrollView contentContainerStyle={s.page}><Header title="Notifications" back={()=>go('profile')}/>{!items.length&&<Card><Text style={s.whiteTitle}>No notifications</Text></Card>}{items.map(n=><Card key={n.id}><Text style={s.whiteTitle}>{n.title}</Text><Text style={s.small}>{n.body}</Text>{!n.read&&<Pill text="New"/>}</Card>)}</ScrollView>}

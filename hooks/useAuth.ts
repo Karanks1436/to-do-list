@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { auth, db } from "@/app/(tabs)/firebase"; // db = Firestore instance
+import { auth, db } from "@/src/firebase/firebase";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
