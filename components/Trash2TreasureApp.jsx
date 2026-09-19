@@ -1,35 +1,19 @@
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  Alert,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import {
-  SafeAreaView,
-} from "react-native-safe-area-context";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Alert, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  onAuthStateChanged,
-  signInAnonymously,
-} from "firebase/auth";
+import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 
 import { auth } from "../src/firebase/firebase";
-
 import {
   createPickup,
+  identifyWasteImage,
   logoutUser,
   saveWasteScan,
   subscribeUser,
 } from "../src/firebase/firebaseService";
-
 import {
   acceptPickup,
   approveCollector,
@@ -47,7 +31,6 @@ import {
   watchPendingCollectors,
   watchTransactions,
 } from "../src/firebase/marketplaceService";
-
 import {
   AdminScreen,
   CollectorDashboardScreen,
@@ -66,10 +49,8 @@ import {
   TrackingScreen,
   WalletScreen,
 } from "../src/screens";
-
-import {
-  useAppUpdate,
-} from "../src/update/useAppUpdate";
+import { convertQuantityToKg } from "../src/screens/QuantityScreen";
+import { useAppUpdate } from "../src/update/useAppUpdate";
 import UpdateModal from "../src/update/UpdateModal";
 import { C } from "../src/theme";
 import { s } from "../src/styles";
@@ -108,95 +89,110 @@ const DEFAULT_PROFILE = {
   completedPickups: 0,
 };
 
+// Temporary INR/kg estimates used only until an admin publishes a current rate.
+// Keep the same fallback table in the createPickupRequest Cloud Function.
+const AVERAGE_RATES = {
+  plastic_pet: 12,
+  plastic_hdpe: 20,
+  plastic_ldpe: 10,
+  mixed_plastic: 8,
+  cardboard: 10,
+  paper: 14,
+  newspaper: 16,
+  glass: 4,
+  metal_aluminium: 110,
+  metal_steel: 32,
+  metal_iron: 28,
+  metal_copper: 650,
+  metal_brass: 400,
+  ewaste: 50,
+  organic: 2,
+  textile: 8,
+};
+
+const CATEGORY_AVERAGE_RATES = {
+  plastic: 10,
+  paper: 12,
+  cardboard: 10,
+  glass: 4,
+  metal: 30,
+  ewaste: 50,
+  electronic: 50,
+  organic: 2,
+  textile: 8,
+  other: 5,
+};
+
+function getFallbackRate(material) {
+  const materialId = material?.id || material?.materialId || "";
+  const category = String(material?.category || "other").toLowerCase();
+  return (
+    AVERAGE_RATES[materialId] ??
+    CATEGORY_AVERAGE_RATES[category] ??
+    CATEGORY_AVERAGE_RATES.other
+  );
+}
+
 export default function Trash2TreasureApp() {
   const [route, setRoute] = useState("splash");
-
   const [user, setUser] = useState(null);
-  const [profile, setProfile] =
-    useState(DEFAULT_PROFILE);
-  const [authReady, setAuthReady] =
-    useState(false);
-
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const [authReady, setAuthReady] = useState(false);
   const profileCreationStarted = useRef(false);
 
   const [image, setImage] = useState(null);
   const [base64, setBase64] = useState(null);
-  const [mime, setMime] =
-    useState("image/jpeg");
+  const [mime, setMime] = useState("image/jpeg");
   const [scanId, setScanId] = useState(null);
-
-  const [quantity, setQuantity] =
-    useState("2");
-  const [activeTab, setActiveTab] =
-    useState("home");
+  const [material, setMaterial] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [quantity, setQuantity] = useState("2");
+  const [quantityUnit, setQuantityUnit] = useState("kg");
+  const [activeTab, setActiveTab] = useState("home");
 
   const [rates, setRates] = useState([]);
-  const [collectors, setCollectors] =
-    useState([]);
-  const [pickups, setPickups] =
-    useState([]);
-  const [transactions, setTransactions] =
-    useState([]);
-  const [notices, setNotices] =
-    useState([]);
-  const [openPickups, setOpenPickups] =
-    useState([]);
-  const [pending, setPending] =
-    useState([]);
+  const [collectors, setCollectors] = useState([]);
+  const [pickups, setPickups] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [notices, setNotices] = useState([]);
+  const [openPickups, setOpenPickups] = useState([]);
+  const [pending, setPending] = useState([]);
   const [busy, setBusy] = useState(null);
 
-  const {
-    update,
-    dismiss,
-  } = useAppUpdate();
+  const [currentUserLocation, setCurrentUserLocation] = useState(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState(null);
 
-  /*
-   * No visible authentication screen.
-   * Firebase anonymous authentication happens
-   * automatically in the background.
-   */
+  const { update, dismiss } = useAppUpdate();
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      async (currentUser) => {
-        if (currentUser) {
-          setUser(currentUser);
-          setAuthReady(true);
-          return;
-        }
-
-        try {
-          setAuthReady(false);
-
-          const credential =
-            await signInAnonymously(auth);
-
-          setUser(credential.user);
-          setAuthReady(true);
-        } catch (error) {
-          setAuthReady(true);
-
-          Alert.alert(
-            "Firebase setup required",
-            "Enable Anonymous authentication in Firebase Console. " +
-              (error?.message || "")
-          );
-        }
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        setAuthReady(true);
+        return;
       }
-    );
+
+      try {
+        setAuthReady(false);
+        const credential = await signInAnonymously(auth);
+        setUser(credential.user);
+        setAuthReady(true);
+      } catch (error) {
+        setAuthReady(true);
+        Alert.alert(
+          "Firebase setup required",
+          "Enable Anonymous authentication in Firebase Console. " +
+            (error?.message || "")
+        );
+      }
+    });
 
     return unsubscribe;
   }, []);
 
-  /*
-   * Load the anonymous profile.
-   * If it does not exist, create a giver profile
-   * through the trusted Cloud Function.
-   */
   useEffect(() => {
-    if (!user) {
-      return undefined;
-    }
+    if (!user) return undefined;
 
     return subscribeUser(
       user.uid,
@@ -207,15 +203,9 @@ export default function Trash2TreasureApp() {
           return;
         }
 
-        setProfile({
-          ...DEFAULT_PROFILE,
-          uid: user.uid,
-        });
+        setProfile({ ...DEFAULT_PROFILE, uid: user.uid });
 
-        if (profileCreationStarted.current) {
-          return;
-        }
-
+        if (profileCreationStarted.current) return;
         profileCreationStarted.current = true;
 
         try {
@@ -223,54 +213,27 @@ export default function Trash2TreasureApp() {
             name: "Guest Recycler",
             role: "giver",
           });
-
           await user.getIdToken(true);
         } catch (error) {
           profileCreationStarted.current = false;
-
-          console.warn(
-            "Profile creation failed:",
-            error?.message
-          );
+          console.warn("Profile creation failed:", error?.message);
         }
       },
-      (error) => {
-        console.warn(
-          "Profile subscription failed:",
-          error?.message
-        );
-      }
+      (error) => console.warn("Profile subscription failed:", error?.message)
     );
   }, [user?.uid]);
 
-  /*
-   * Subscribe to shared data only after Firebase
-   * anonymous authentication is ready.
-   */
   useEffect(() => {
-    if (!user) {
-      return undefined;
-    }
+    if (!user) return undefined;
 
-    const unsubscribeRates =
-      watchCurrentRates(
-        setRates,
-        (error) =>
-          console.warn(
-            "Rate subscription:",
-            error?.message
-          )
-      );
-
-    const unsubscribeCollectors =
-      watchApprovedCollectors(
-        setCollectors,
-        (error) =>
-          console.warn(
-            "Collector subscription:",
-            error?.message
-          )
-      );
+    const unsubscribeRates = watchCurrentRates(
+      setRates,
+      (error) => console.warn("Rate subscription:", error?.message)
+    );
+    const unsubscribeCollectors = watchApprovedCollectors(
+      setCollectors,
+      (error) => console.warn("Collector subscription:", error?.message)
+    );
 
     return () => {
       unsubscribeRates?.();
@@ -278,115 +241,105 @@ export default function Trash2TreasureApp() {
     };
   }, [user?.uid]);
 
-  /*
-   * Role-specific subscriptions.
-   */
   useEffect(() => {
-    if (!user || !profile?.role) {
-      return undefined;
-    }
+    if (!user || !profile?.role) return undefined;
 
-    const subscriptions = [];
-
-    subscriptions.push(
-      watchNotifications(
-        user.uid,
-        setNotices,
-        console.warn
-      )
-    );
+    const subscriptions = [
+      watchNotifications(user.uid, setNotices, console.warn),
+    ];
 
     if (profile.role === "giver") {
       subscriptions.push(
-        watchGiverPickups(
-          user.uid,
-          setPickups,
-          console.warn
-        )
-      );
-
-      subscriptions.push(
-        watchTransactions(
-          user.uid,
-          setTransactions,
-          console.warn
-        )
+        watchGiverPickups(user.uid, setPickups, console.warn),
+        watchTransactions(user.uid, setTransactions, console.warn)
       );
     }
 
     if (profile.role === "collector") {
       subscriptions.push(
-        watchCollectorPickups(
-          user.uid,
-          setPickups,
-          console.warn
-        )
-      );
-
-      subscriptions.push(
-        watchOpenPickups(
-          setOpenPickups,
-          console.warn
-        )
+        watchCollectorPickups(user.uid, setPickups, console.warn),
+        watchOpenPickups(setOpenPickups, console.warn)
       );
     }
 
     if (profile.role === "admin") {
-      subscriptions.push(
-        watchPendingCollectors(
-          setPending,
-          console.warn
-        )
-      );
+      subscriptions.push(watchPendingCollectors(setPending, console.warn));
     }
 
-    return () => {
-      subscriptions.forEach(
-        (unsubscribe) => unsubscribe?.()
-      );
-    };
+    return () => subscriptions.forEach((unsubscribe) => unsubscribe?.());
   }, [user?.uid, profile?.role]);
+
+  useEffect(() => {
+    if (route !== "collectors" || profile?.role !== "giver") return;
+    loadCurrentUserLocation(false);
+  }, [route, profile?.role]);
 
   const go = (nextRoute) => {
     setRoute(nextRoute);
-
-    const relatedTab =
-      ROUTE_TABS[nextRoute];
-
-    if (relatedTab) {
-      setActiveTab(relatedTab);
-    }
+    const relatedTab = ROUTE_TABS[nextRoute];
+    if (relatedTab) setActiveTab(relatedTab);
   };
 
   const switchTab = (tab) => {
     const nextRoute = TAB_ROUTES[tab];
-
-    if (!nextRoute) {
-      return;
-    }
-
+    if (!nextRoute) return;
     setActiveTab(tab);
     setRoute(nextRoute);
+  };
+
+  const loadCurrentUserLocation = async (showErrors = true) => {
+    try {
+      setLocationLoading(true);
+      setLocationError(null);
+
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        const message = "Location permission is required to find nearby collectors.";
+        setLocationError(message);
+        if (showErrors) Alert.alert("Location permission required", message);
+        return null;
+      }
+
+      const lastKnown = await Location.getLastKnownPositionAsync();
+      if (lastKnown?.coords) {
+        setCurrentUserLocation({
+          latitude: lastKnown.coords.latitude,
+          longitude: lastKnown.coords.longitude,
+          accuracy: lastKnown.coords.accuracy,
+        });
+      }
+
+      const current = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const coordinates = {
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+        accuracy: current.coords.accuracy,
+      };
+      setCurrentUserLocation(coordinates);
+      return coordinates;
+    } catch (error) {
+      const message = error?.message || "Unable to get your current location.";
+      setLocationError(message);
+      if (showErrors) Alert.alert("Location unavailable", message);
+      return null;
+    } finally {
+      setLocationLoading(false);
+    }
   };
 
   const pick = async (camera = false) => {
     try {
       const permission = camera
-        ? await ImagePicker
-            .requestCameraPermissionsAsync()
-        : await ImagePicker
-            .requestMediaLibraryPermissionsAsync();
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permission.granted) {
         Alert.alert(
           "Permission required",
-          `Please allow ${
-            camera
-              ? "camera"
-              : "photo library"
-          } access.`
+          `Please allow ${camera ? "camera" : "photo library"} access.`
         );
-
         return;
       }
 
@@ -397,209 +350,185 @@ export default function Trash2TreasureApp() {
         allowsEditing: true,
         aspect: [4, 5],
       };
-
       const result = camera
-        ? await ImagePicker
-            .launchCameraAsync(options)
-        : await ImagePicker
-            .launchImageLibraryAsync(options);
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
 
-      if (result.canceled) {
-        return;
-      }
-
+      if (result.canceled) return;
       const asset = result.assets[0];
-
       if (!asset.base64) {
-        Alert.alert(
-          "Encoding failed",
-          "The image could not be converted to Base64."
-        );
-
+        Alert.alert("Encoding failed", "The image could not be converted to Base64.");
         return;
       }
 
-      const imageBytes = Math.ceil(
-        (asset.base64.length * 3) / 4
-      );
-
+      const imageBytes = Math.ceil((asset.base64.length * 3) / 4);
       if (imageBytes > 700 * 1024) {
-        Alert.alert(
-          "Image too large",
-          "Choose a smaller image. Maximum size is 700 KB."
-        );
-
+        Alert.alert("Image too large", "Choose a smaller image. Maximum size is 700 KB.");
         return;
       }
 
       setImage(asset.uri);
       setBase64(asset.base64);
-      setMime(
-        asset.mimeType || "image/jpeg"
-      );
+      setMime(asset.mimeType || "image/jpeg");
       setScanId(null);
-
+      setMaterial(null);
+      setAnalysis(null);
       go("scan");
     } catch (error) {
-      Alert.alert(
-        "Image selection failed",
-        error?.message ||
-          "Unable to select the image."
-      );
+      Alert.alert("Image selection failed", error?.message || "Unable to select the image.");
     }
   };
 
-  const material = {
-    id: "plastic_pet",
-    name: "Plastic (PET)",
-  };
-
-  const rate = Number(
-    rates.find(
-      (item) =>
-        item.materialId === material.id
-    )?.ratePerKg || 0
-  );
+  const selectedMaterialId = material?.id || material?.materialId || null;
+  const selectedRateRecord = useMemo(() => {
+    if (!selectedMaterialId) return null;
+    return rates.find((item) => item.materialId === selectedMaterialId) || null;
+  }, [rates, selectedMaterialId]);
+  const adminRate = Number(selectedRateRecord?.ratePerKg || 0);
+  const fallbackRate = material ? getFallbackRate(material) : 0;
+  const effectiveRate = adminRate > 0 ? adminRate : fallbackRate;
+  const rateSource = adminRate > 0 ? "admin" : "average_fallback";
 
   const nearbyCollectors = useMemo(() => {
+    const giverLocation = currentUserLocation || profile?.location;
+
     return collectors
+      .filter((collector) => {
+        const approved =
+          collector.role === "collector" && collector.status === "active";
+        const hasLocation =
+          Number.isFinite(Number(collector.location?.latitude)) &&
+          Number.isFinite(Number(collector.location?.longitude));
+        return approved && hasLocation;
+      })
       .map((collector) => {
-        const giverLocation =
-          profile?.location ||
-          profile?.address;
-
-        const collectorLocation =
-          collector.location ||
-          collector.address;
-
+        const collectorLocation = {
+          latitude: Number(collector.location.latitude),
+          longitude: Number(collector.location.longitude),
+        };
         return {
           ...collector,
-          distanceKm: distanceKm(
-            giverLocation,
-            collectorLocation
-          ),
+          displayName:
+            collector.businessName || collector.name || "Collector",
+          distanceKm: giverLocation
+            ? distanceKm(giverLocation, collectorLocation)
+            : null,
         };
+      })
+      .filter((collector) => {
+        if (collector.distanceKm == null) return true;
+        return collector.distanceKm <= Number(collector.serviceRadiusKm || 10);
       })
       .sort(
         (first, second) =>
-          (first.distanceKm || 999) -
-          (second.distanceKm || 999)
+          (first.distanceKm ?? 999999) - (second.distanceKm ?? 999999)
       );
-  }, [collectors, profile]);
+  }, [collectors, currentUserLocation, profile?.location]);
 
-  const requestPickup = async (
-    collector
-  ) => {
+  const analyzeCurrentWaste = async () => {
+    if (!base64) {
+      throw new Error("Choose or capture an image first.");
+    }
+
+    const result = await identifyWasteImage({
+      base64,
+      mimeType: mime,
+    });
+
+    setAnalysis(result);
+    return result;
+  };
+
+  const requestPickup = async (collector) => {
+    if (!material?.id) {
+      Alert.alert("Material required", "Identify or select the material first.");
+      return;
+    }
     if (!user) {
-      Alert.alert(
-        "Please wait",
-        "Firebase is still preparing your guest account."
-      );
-
+      Alert.alert("Please wait", "Firebase is preparing your guest account.");
+      return;
+    }
+    if (!effectiveRate) {
+      Alert.alert("Rate unavailable", "No price estimate is available for this material.");
       return;
     }
 
-    if (!rate) {
-      Alert.alert(
-        "Rate unavailable",
-        "The administrator has not published a current rate for this material."
-      );
-
+    const estimatedKg = convertQuantityToKg(
+      quantity,
+      quantityUnit,
+      material
+    );
+    if (!estimatedKg) {
+      Alert.alert("Invalid quantity", "Enter a quantity greater than zero.");
       return;
     }
 
     try {
       setBusy(collector.id);
-
       const result = await createPickup({
         uid: user.uid,
         scanId,
         collector: {
           id: collector.id,
-          name: collector.name,
+          name:
+            collector.businessName || collector.name || "Collector",
         },
-        quantityKg: quantity,
+        quantityKg: estimatedKg,
+        originalQuantity: Number(quantity),
+        originalUnit: quantityUnit,
         materialId: material.id,
+        // Informational only: the Cloud Function must independently choose a trusted rate.
+        displayedRate: effectiveRate,
+        rateSource,
+        location: currentUserLocation || profile?.location || null,
+        address: profile?.address || null,
       });
-
       Alert.alert(
         "Pickup requested",
-        `Estimated value: ₹${Number(
-          result.estimatedValue || 0
-        ).toFixed(0)}`
+        `Estimated value: ₹${Number(result.estimatedValue || 0).toFixed(0)}`
       );
-
       go("tracking");
     } catch (error) {
-      Alert.alert(
-        "Pickup request failed",
-        error?.message ||
-          "Unable to create the request."
-      );
+      Alert.alert("Pickup request failed", error?.message || "Unable to create request.");
     } finally {
       setBusy(null);
     }
   };
 
-  const saveCurrentScan = async () => {
-    if (scanId) {
-      return scanId;
-    }
+  const saveCurrentScan = async (selectedMaterial = material) => {
+    if (scanId) return scanId;
+    if (!user) throw new Error("Firebase guest account is not ready.");
+    if (!base64) throw new Error("Choose or capture an image first.");
+    if (!selectedMaterial?.id) throw new Error("Select a material first.");
 
-    if (!user) {
-      throw new Error(
-        "Firebase guest account is not ready."
-      );
-    }
-
-    if (!base64) {
-      throw new Error(
-        "Choose or capture an image first."
-      );
-    }
-
-    const reference =
-      await saveWasteScan({
-        uid: user.uid,
-        base64,
-        mimeType: mime,
-        analysis: {
-          verification:
-            "collector_required",
-          materialId: material.id,
-        },
-      });
-
+    const reference = await saveWasteScan({
+      uid: user.uid,
+      base64,
+      mimeType: mime,
+      analysis: {
+        ...analysis,
+        selectedMaterialId: selectedMaterial.id,
+        selectedMaterialName: selectedMaterial.name,
+        selectedCategory: selectedMaterial.category,
+        verification: "collector_required",
+      },
+    });
+    setMaterial(selectedMaterial);
     setScanId(reference.id);
-
     return reference.id;
   };
 
   let screen;
 
   if (route === "splash") {
-    screen = (
-      <SplashScreen
-        onStart={() => go("home")}
-      />
-    );
+    screen = <SplashScreen onStart={() => go("home")} />;
   } else if (!authReady) {
     screen = (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text style={{ color: C.text }}>
-          Preparing app…
-        </Text>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: C.text }}>Preparing app…</Text>
       </View>
     );
-  } else if (
-    profile?.role === "admin"
-  ) {
+  } else if (profile?.role === "admin") {
     screen = (
       <AdminScreen
         pending={pending}
@@ -608,11 +537,10 @@ export default function Trash2TreasureApp() {
         logout={logoutUser}
       />
     );
-  } else if (
-    profile?.role === "collector"
-  ) {
+  } else if (profile?.role === "collector") {
     screen = (
       <CollectorDashboardScreen
+        user={user}
         profile={profile}
         pickups={pickups}
         openPickups={openPickups}
@@ -623,27 +551,18 @@ export default function Trash2TreasureApp() {
       />
     );
   } else if (route === "home") {
-    screen = (
-      <HomeScreen
-        go={go}
-        profile={profile}
-        pickups={pickups}
-      />
-    );
+    screen = <HomeScreen go={go} profile={profile} pickups={pickups} />;
   } else if (route === "scan") {
-    screen = (
-      <ScanScreen
-        go={go}
-        image={image}
-        pick={pick}
-      />
-    );
+    screen = <ScanScreen go={go} image={image} pick={pick} />;
   } else if (route === "result") {
     screen = (
       <ResultScreen
         go={go}
         image={image}
         material={material}
+        setMaterial={setMaterial}
+        analysis={analysis}
+        analyzeWaste={analyzeCurrentWaste}
         saveScan={saveCurrentScan}
       />
     );
@@ -653,7 +572,13 @@ export default function Trash2TreasureApp() {
         go={go}
         quantity={quantity}
         setQuantity={setQuantity}
-        rate={rate}
+        unit={quantityUnit}
+        setUnit={setQuantityUnit}
+        // QuantityScreen receives only the admin rate. When it is zero,
+        // that screen clearly labels and uses its own average fallback.
+        rate={adminRate}
+        rateMonth={selectedRateRecord?.month || null}
+        rateSource={rateSource}
         material={material}
       />
     );
@@ -661,206 +586,81 @@ export default function Trash2TreasureApp() {
     screen = (
       <CollectorsScreen
         go={go}
-        collectors={
-          nearbyCollectors
-        }
-        requestPickup={
-          requestPickup
-        }
+        collectors={nearbyCollectors}
+        requestPickup={requestPickup}
         busy={busy}
+        locationLoading={locationLoading}
+        locationError={locationError}
+        currentLocation={currentUserLocation}
+        refreshLocation={() => loadCurrentUserLocation(true)}
       />
     );
   } else if (route === "tracking") {
-    screen = (
-      <TrackingScreen
-        go={go}
-        pickups={pickups}
-      />
-    );
+    screen = <TrackingScreen go={go} pickups={pickups} />;
   } else if (route === "history") {
-    screen = (
-      <HistoryScreen
-        go={go}
-        transactions={
-          transactions
-        }
-      />
-    );
+    screen = <HistoryScreen go={go} transactions={transactions} />;
   } else if (route === "profile") {
-    screen = (
-      <ProfileScreen
-        go={go}
-        profile={profile}
-        user={user}
-      />
-    );
+    screen = <ProfileScreen go={go} profile={profile} user={user} />;
   } else if (route === "wallet") {
-    screen = (
-      <WalletScreen
-        go={go}
-        profile={profile}
-      />
-    );
+    screen = <WalletScreen go={go} profile={profile} />;
   } else if (route === "impact") {
-    screen = (
-      <ImpactScreen
-        go={go}
-        profile={profile}
-      />
-    );
+    screen = <ImpactScreen go={go} profile={profile} />;
   } else if (route === "settings") {
-    screen = (
-      <SettingsScreen
-        go={go}
-        user={user}
-        initial={
-          profile?.settings
-        }
-      />
-    );
+    screen = <SettingsScreen go={go} user={user} initial={profile?.settings} />;
   } else if (route === "documents") {
-    screen = (
-      <DocumentsScreen
-        go={go}
-        user={user}
-      />
-    );
+    screen = <DocumentsScreen go={go} user={user} />;
   } else {
-    screen = (
-      <NotificationsScreen
-        go={go}
-        items={notices}
-      />
-    );
+    screen = <NotificationsScreen go={go} items={notices} />;
   }
 
   const hideTabs =
     route === "splash" ||
     profile?.role === "admin" ||
     profile?.role === "collector" ||
-    [
-      "result",
-      "quantity",
-      "wallet",
-      "settings",
-      "documents",
-      "notifications",
-    ].includes(route);
+    ["result", "quantity", "wallet", "settings", "documents", "notifications"].includes(route);
 
   return (
     <SafeAreaView
       style={s.safe}
-      edges={[
-        "top",
-        "left",
-        "right",
-        "bottom",
-      ]}
+      edges={["top", "left", "right", "bottom"]}
     >
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor={C.bg}
-      />
-
-      <View style={{ flex: 1 }}>
-        {screen}
-      </View>
-
-      {!hideTabs && (
-        <BottomNav
-          active={activeTab}
-          onPress={switchTab}
-        />
-      )}
-
-      <UpdateModal
-        update={update}
-        onDismiss={dismiss}
-      />
+      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      <View style={{ flex: 1 }}>{screen}</View>
+      {!hideTabs && <BottomNav active={activeTab} onPress={switchTab} />}
+      <UpdateModal update={update} onDismiss={dismiss} />
     </SafeAreaView>
   );
 }
 
-function BottomNav({
-  active,
-  onPress,
-}) {
+function BottomNav({ active, onPress }) {
   const tabs = [
-    [
-      "home",
-      "home-outline",
-      "home",
-      "Home",
-    ],
-    [
-      "scan",
-      "scan-outline",
-      "scan",
-      "Scan",
-    ],
-    [
-      "map",
-      "location-outline",
-      "location",
-      "Map",
-    ],
-    [
-      "history",
-      "time-outline",
-      "time",
-      "History",
-    ],
-    [
-      "profile",
-      "person-outline",
-      "person",
-      "Profile",
-    ],
+    ["home", "home-outline", "home", "Home"],
+    ["scan", "scan-outline", "scan", "Scan"],
+    ["map", "location-outline", "location", "Map"],
+    ["history", "time-outline", "time", "History"],
+    ["profile", "person-outline", "person", "Profile"],
   ];
 
   return (
     <View style={s.bottomNav}>
-      {tabs.map((tab) => {
-        const [
-          key,
-          inactiveIcon,
-          activeIcon,
-          label,
-        ] = tab;
-
-        const selected =
-          active === key;
-
+      {tabs.map(([key, inactiveIcon, activeIcon, label]) => {
+        const selected = active === key;
         return (
           <TouchableOpacity
             key={key}
             activeOpacity={0.7}
             style={s.tab}
-            onPress={() =>
-              onPress(key)
-            }
+            onPress={() => onPress(key)}
           >
             <Ionicons
-              name={
-                selected
-                  ? activeIcon
-                  : inactiveIcon
-              }
-              color={
-                selected
-                  ? C.green
-                  : C.muted
-              }
+              name={selected ? activeIcon : inactiveIcon}
+              color={selected ? C.green : C.muted}
               size={22}
             />
-
             <Text
               style={[
                 s.tabText,
-                selected && {
-                  color: C.green,
-                  fontWeight: "700",
-                },
+                selected && { color: C.green, fontWeight: "700" },
               ]}
             >
               {label}
