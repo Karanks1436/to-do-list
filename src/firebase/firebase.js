@@ -6,13 +6,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Firebase client keys are identifiers, not server secrets. Access is protected by
 // Firebase Authentication, Security Rules, App Check, and Android package/SHA setup.
 const firebaseConfig = {
-  apiKey: 'AIzaSyA1OlJQBFugE7Xw4CJD_bRsauMlvCy5QWk',
-  authDomain: 'listing-7621a.firebaseapp.com',
-  projectId: 'listing-7621a',
-  storageBucket: 'listing-7621a.firebasestorage.app',
-  messagingSenderId: '77944162149',
-  appId: '1:77944162149:web:ca1b6b690fa3594447838c',
-  measurementId: 'G-CDD1996HB0',
+  apiKey: "AIzaSyChKKzm-2tvuiJnco5QQ0hlQ8MM6GWEHXg",
+  authDomain: "trash-2treasure.firebaseapp.com",
+  projectId: "trash-2treasure",
+  storageBucket: "trash-2treasure.firebasestorage.app",
+  messagingSenderId: "842983261450",
+  appId: "1:842983261450:web:a67cbc653b4f03e8a6a6f3",
+  measurementId: "G-0GDKX5BD71"
 };
 
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);

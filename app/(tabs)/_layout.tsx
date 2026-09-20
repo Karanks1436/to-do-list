@@ -1,14 +1,1 @@
-import { Stack } from "expo-router";
-
-export default function TabLayout() {
-  return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: {
-          backgroundColor: "#03191d",
-        },
-      }}
-    />
-  );
-}
+import{Stack}from'expo-router';export default function AppLayout(){return <Stack screenOptions={{headerShown:false,contentStyle:{backgroundColor:'#03191d'}}}/>}

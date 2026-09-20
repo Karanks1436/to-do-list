@@ -4,6 +4,7 @@
     {"collectionGroup":"pickupRequests","queryScope":"COLLECTION","fields":[{"fieldPath":"collectorId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
     {"collectionGroup":"pickupRequests","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
     {"collectionGroup":"transactions","queryScope":"COLLECTION","fields":[{"fieldPath":"giverId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
+    {"collectionGroup":"transactions","queryScope":"COLLECTION","fields":[{"fieldPath":"collectorId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
     {"collectionGroup":"notifications","queryScope":"COLLECTION","fields":[{"fieldPath":"userId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
     {"collectionGroup":"users","queryScope":"COLLECTION","fields":[{"fieldPath":"role","order":"ASCENDING"},{"fieldPath":"status","order":"ASCENDING"}]}
   ],

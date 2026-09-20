@@ -1,15 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Alert, StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
-import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "../src/firebase/firebase";
 import {
   createPickup,
-  identifyWasteImage,
   logoutUser,
   saveWasteScan,
   subscribeUser,
@@ -18,7 +17,6 @@ import {
   acceptPickup,
   approveCollector,
   completePickup,
-  completeRegistration,
   distanceKm,
   setMonthlyRate,
   updatePickupStatus,
@@ -31,25 +29,25 @@ import {
   watchPendingCollectors,
   watchTransactions,
 } from "../src/firebase/marketplaceService";
-import {
-  AdminScreen,
-  CollectorDashboardScreen,
-  CollectorsScreen,
-  DocumentsScreen,
-  HistoryScreen,
-  HomeScreen,
-  ImpactScreen,
-  NotificationsScreen,
-  ProfileScreen,
-  QuantityScreen,
-  ResultScreen,
-  ScanScreen,
-  SettingsScreen,
-  SplashScreen,
-  TrackingScreen,
-  WalletScreen,
-} from "../src/screens";
-import { convertQuantityToKg } from "../src/screens/QuantityScreen";
+import AdminScreen from "../src/screens/AdminScreen";
+import AuthScreen from "../src/screens/AuthScreen";
+import CollectorDashboardScreen from "../src/screens/CollectorDashboardScreen";
+import CollectorsScreen from "../src/screens/CollectorsScreen";
+import DocumentsScreen from "../src/screens/DocumentsScreen";
+import HistoryScreen from "../src/screens/HistoryScreen";
+import HomeScreen from "../src/screens/HomeScreen";
+import ImpactScreen from "../src/screens/ImpactScreen";
+import NotificationsScreen from "../src/screens/NotificationsScreen";
+import ProfileScreen from "../src/screens/ProfileScreen";
+import ResultScreen from "../src/screens/ResultScreen";
+import ScanScreen from "../src/screens/ScanScreen";
+import SettingsScreen from "../src/screens/SettingsScreen";
+import SplashScreen from "../src/screens/SplashScreen";
+import TrackingScreen from "../src/screens/TrackingScreen";
+import WalletScreen from "../src/screens/WalletScreen";
+import QuantityScreen, {
+  convertQuantityToKg,
+} from "../src/screens/QuantityScreen";
 import { useAppUpdate } from "../src/update/useAppUpdate";
 import UpdateModal from "../src/update/UpdateModal";
 import { C } from "../src/theme";
@@ -79,10 +77,11 @@ const ROUTE_TABS = {
   notifications: "profile",
 };
 
-const DEFAULT_PROFILE = {
-  name: "Guest Recycler",
+
+const GUEST_PROFILE = {
+  name: "Guest",
   role: "giver",
-  status: "active",
+  status: "guest",
   recycledKg: 0,
   walletBalance: 0,
   greenPoints: 0,
@@ -136,9 +135,9 @@ function getFallbackRate(material) {
 export default function Trash2TreasureApp() {
   const [route, setRoute] = useState("splash");
   const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const [profile, setProfile] = useState(null);
   const [authReady, setAuthReady] = useState(false);
-  const profileCreationStarted = useRef(false);
+  const [guestMode, setGuestMode] = useState(false);
 
   const [image, setImage] = useState(null);
   const [base64, setBase64] = useState(null);
@@ -166,61 +165,61 @@ export default function Trash2TreasureApp() {
   const { update, dismiss } = useAppUpdate();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        setAuthReady(true);
-        return;
-      }
-
-      try {
-        setAuthReady(false);
-        const credential = await signInAnonymously(auth);
-        setUser(credential.user);
-        setAuthReady(true);
-      } catch (error) {
-        setAuthReady(true);
-        Alert.alert(
-          "Firebase setup required",
-          "Enable Anonymous authentication in Firebase Console. " +
-            (error?.message || "")
-        );
+    return onAuthStateChanged(auth, (currentUser) => {
+      // Clear the previous account immediately so it can never flash after an
+      // account switch. The profile listener below supplies the new profile.
+      setProfile(null);
+      setUser(currentUser);
+      setAuthReady(true);
+      if (!currentUser) {
+        setPickups([]);
+        setTransactions([]);
+        setNotices([]);
       }
     });
-
-    return unsubscribe;
   }, []);
 
   useEffect(() => {
     if (!user) return undefined;
 
-    return subscribeUser(
+    let receivedProfile = false;
+    const fallbackProfile = {
+      name: user.displayName || user.email?.split("@")[0] || "Recycler",
+      email: user.email || "",
+      role:
+        user.email?.toLowerCase() === "karank2s6266@gmail.com"
+          ? "admin"
+          : "giver",
+      status: "active",
+      profilePending: true,
+    };
+
+    // Do not trap the user on “Loading profile…” when Firestore is slow or
+    // temporarily offline. Continue quickly with safe Auth-derived data; the
+    // live snapshot replaces it automatically as soon as Firestore responds.
+    const fallbackTimer = setTimeout(() => {
+      if (!receivedProfile) setProfile(fallbackProfile);
+    }, 1200);
+
+    const unsubscribe = subscribeUser(
       user.uid,
-      async (userProfile) => {
-        if (userProfile) {
-          setProfile(userProfile);
-          profileCreationStarted.current = false;
-          return;
-        }
-
-        setProfile({ ...DEFAULT_PROFILE, uid: user.uid });
-
-        if (profileCreationStarted.current) return;
-        profileCreationStarted.current = true;
-
-        try {
-          await completeRegistration({
-            name: "Guest Recycler",
-            role: "giver",
-          });
-          await user.getIdToken(true);
-        } catch (error) {
-          profileCreationStarted.current = false;
-          console.warn("Profile creation failed:", error?.message);
-        }
+      (userProfile) => {
+        receivedProfile = true;
+        clearTimeout(fallbackTimer);
+        setProfile(userProfile || fallbackProfile);
       },
-      (error) => console.warn("Profile subscription failed:", error?.message)
+      (error) => {
+        receivedProfile = true;
+        clearTimeout(fallbackTimer);
+        console.warn("Profile subscription failed:", error?.message);
+        setProfile(fallbackProfile);
+      }
     );
+
+    return () => {
+      clearTimeout(fallbackTimer);
+      unsubscribe?.();
+    };
   }, [user?.uid]);
 
   useEffect(() => {
@@ -275,6 +274,13 @@ export default function Trash2TreasureApp() {
   }, [route, profile?.role]);
 
   const go = (nextRoute) => {
+    if (guestMode && ["documents", "settings"].includes(nextRoute)) {
+      Alert.alert("Login required", "Please log in to use this feature.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Login", onPress: () => { setGuestMode(false); setRoute("auth"); } },
+      ]);
+      return;
+    }
     setRoute(nextRoute);
     const relatedTab = ROUTE_TABS[nextRoute];
     if (relatedTab) setActiveTab(relatedTab);
@@ -389,6 +395,21 @@ export default function Trash2TreasureApp() {
   const effectiveRate = adminRate > 0 ? adminRate : fallbackRate;
   const rateSource = adminRate > 0 ? "admin" : "average_fallback";
 
+  const displayProfile = useMemo(() => {
+    if (!profile) return guestMode ? GUEST_PROFILE : null;
+    if (profile.role !== "giver") return profile;
+    const completed = transactions.filter((item) => item.type === "pickup_credit");
+    const walletBalance = completed.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const recycledKg = completed.reduce((sum, item) => sum + Number(item.weightKg || 0), 0);
+    return {
+      ...profile,
+      walletBalance,
+      recycledKg,
+      greenPoints: Math.round(recycledKg * 10),
+      completedPickups: completed.length,
+    };
+  }, [profile, transactions, guestMode]);
+
   const nearbyCollectors = useMemo(() => {
     const giverLocation = currentUserLocation || profile?.location;
 
@@ -425,27 +446,16 @@ export default function Trash2TreasureApp() {
       );
   }, [collectors, currentUserLocation, profile?.location]);
 
-  const analyzeCurrentWaste = async () => {
-    if (!base64) {
-      throw new Error("Choose or capture an image first.");
-    }
-
-    const result = await identifyWasteImage({
-      base64,
-      mimeType: mime,
-    });
-
-    setAnalysis(result);
-    return result;
-  };
-
   const requestPickup = async (collector) => {
     if (!material?.id) {
       Alert.alert("Material required", "Identify or select the material first.");
       return;
     }
     if (!user) {
-      Alert.alert("Please wait", "Firebase is preparing your guest account.");
+      Alert.alert("Login required", "Please log in before requesting a pickup.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Login", onPress: () => { setGuestMode(false); setRoute("auth"); } },
+      ]);
       return;
     }
     if (!effectiveRate) {
@@ -497,9 +507,15 @@ export default function Trash2TreasureApp() {
 
   const saveCurrentScan = async (selectedMaterial = material) => {
     if (scanId) return scanId;
-    if (!user) throw new Error("Firebase guest account is not ready.");
     if (!base64) throw new Error("Choose or capture an image first.");
     if (!selectedMaterial?.id) throw new Error("Select a material first.");
+
+    if (!user) {
+      setMaterial(selectedMaterial);
+      const localId = `guest-${Date.now()}`;
+      setScanId(localId);
+      return localId;
+    }
 
     const reference = await saveWasteScan({
       uid: user.uid,
@@ -521,11 +537,35 @@ export default function Trash2TreasureApp() {
   let screen;
 
   if (route === "splash") {
-    screen = <SplashScreen onStart={() => go("home")} />;
+    screen = <SplashScreen onStart={() => {
+      if (!authReady) return;
+      setGuestMode(false);
+      go("auth");
+    }} />;
+  } else if (route === "auth" && !guestMode) {
+    screen = (
+      <AuthScreen
+        onSuccess={() => { setGuestMode(false); go("home"); }}
+        onSkip={() => { setGuestMode(true); go("home"); }}
+      />
+    );
   } else if (!authReady) {
     screen = (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <Text style={{ color: C.text }}>Preparing app…</Text>
+      </View>
+    );
+  } else if (!user && !guestMode) {
+    screen = (
+      <AuthScreen
+        onSuccess={() => { setGuestMode(false); go("home"); }}
+        onSkip={() => { setGuestMode(true); go("home"); }}
+      />
+    );
+  } else if (user && !profile) {
+    screen = (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: C.text }}>Loading profile…</Text>
       </View>
     );
   } else if (profile?.role === "admin") {
@@ -551,7 +591,7 @@ export default function Trash2TreasureApp() {
       />
     );
   } else if (route === "home") {
-    screen = <HomeScreen go={go} profile={profile} pickups={pickups} />;
+    screen = <HomeScreen go={go} profile={displayProfile} pickups={pickups} />;
   } else if (route === "scan") {
     screen = <ScanScreen go={go} image={image} pick={pick} />;
   } else if (route === "result") {
@@ -562,7 +602,6 @@ export default function Trash2TreasureApp() {
         material={material}
         setMaterial={setMaterial}
         analysis={analysis}
-        analyzeWaste={analyzeCurrentWaste}
         saveScan={saveCurrentScan}
       />
     );
@@ -600,11 +639,11 @@ export default function Trash2TreasureApp() {
   } else if (route === "history") {
     screen = <HistoryScreen go={go} transactions={transactions} />;
   } else if (route === "profile") {
-    screen = <ProfileScreen go={go} profile={profile} user={user} />;
+    screen = <ProfileScreen go={go} profile={displayProfile} user={user} />;
   } else if (route === "wallet") {
-    screen = <WalletScreen go={go} profile={profile} />;
+    screen = <WalletScreen go={go} profile={displayProfile} />;
   } else if (route === "impact") {
-    screen = <ImpactScreen go={go} profile={profile} />;
+    screen = <ImpactScreen go={go} profile={displayProfile} />;
   } else if (route === "settings") {
     screen = <SettingsScreen go={go} user={user} initial={profile?.settings} />;
   } else if (route === "documents") {
@@ -614,7 +653,9 @@ export default function Trash2TreasureApp() {
   }
 
   const hideTabs =
+    (!user && !guestMode) ||
     route === "splash" ||
+    route === "auth" ||
     profile?.role === "admin" ||
     profile?.role === "collector" ||
     ["result", "quantity", "wallet", "settings", "documents", "notifications"].includes(route);
