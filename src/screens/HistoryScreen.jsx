@@ -1,6 +1,3 @@
-// import React from'react';import{ScrollView,Text,View}from'react-native';import{Card,Header,Pill}from'../components/UI';import{s}from'../styles';
-// export default function HistoryScreen({go,transactions=[]}){return <ScrollView contentContainerStyle={s.page}><Header title="Transaction History" back={()=>go('home')}/>{!transactions.length&&<Card><Text style={s.whiteTitle}>No transactions yet</Text></Card>}{transactions.map(t=><Card key={t.id}><View style={s.between}><View><Text style={s.whiteTitle}>{t.materialId}</Text><Text style={s.small}>{t.weightKg} kg · ₹{t.ratePerKg}/kg</Text></View><Pill text={`₹${Number(t.amount||0).toFixed(0)}`}/></View></Card>)}</ScrollView>}
-
 import React, { useMemo, useState } from "react";
 import {
   ScrollView,
@@ -72,6 +69,9 @@ export default function HistoryScreen({
           transaction.claimedMaterialId,
           materialName(transaction.materialId),
           transaction.pickupId,
+          transaction.giverName,
+          transaction.collectorName,
+          transaction.originalUnit,
           transaction.type,
         ]
           .filter(Boolean)
@@ -98,7 +98,18 @@ export default function HistoryScreen({
   );
 
   const role = profile?.role || "giver";
-  const amountLabel = role === "collector" ? "Processed value" : "Total credited";
+  const amountLabel =
+    role === "collector"
+      ? "Processed pickup value"
+      : role === "admin"
+      ? "Total settlement value"
+      : "Total credited";
+  const historyTitle =
+    role === "admin"
+      ? "All Transactions"
+      : role === "collector"
+      ? "Collector History"
+      : "Transaction History";
 
   return (
     <ScrollView
@@ -106,14 +117,14 @@ export default function HistoryScreen({
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <Header title="Transaction History" back={() => go("home")} />
+      <Header title={historyTitle} back={() => go("home")} />
 
       <View style={styles.summary}>
         <View style={{ flex: 1 }}>
           <Text style={styles.summaryLabel}>{amountLabel}</Text>
           <Text style={styles.summaryAmount}>₹{totals.amount.toFixed(0)}</Text>
           <Text style={styles.summarySub}>
-            {totals.weight.toFixed(2)} kg across {totals.count} transaction
+            {totals.weight.toFixed(2)} verified kg across {totals.count} completed settlement
             {totals.count === 1 ? "" : "s"}
           </Text>
         </View>
@@ -150,7 +161,7 @@ export default function HistoryScreen({
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Search material or pickup ID"
+          placeholder="Search material, person or pickup ID"
           placeholderTextColor={C.muted}
           autoCapitalize="none"
           style={styles.searchInput}
@@ -180,6 +191,8 @@ export default function HistoryScreen({
               ? "Change the date filter or search term."
               : role === "collector"
               ? "Completed and verified pickups will appear here."
+              : role === "admin"
+              ? "All completed marketplace settlements will appear here."
               : "Your completed pickup credits will appear here."}
           </Text>
         </View>
@@ -212,6 +225,14 @@ function TransactionCard({ transaction, role, currentUid }) {
   const weight = Number(transaction.weightKg || 0);
   const rate = Number(transaction.ratePerKg || 0);
   const isGiver = role === "giver" || transaction.giverId === currentUid;
+  const originalQuantity = Number(transaction.originalQuantity || 0);
+  const originalUnit = transaction.originalUnit || "kg";
+  const rateSourceLabel =
+    transaction.rateSource === "admin"
+      ? "Admin-published rate"
+      : transaction.rateSource === "average_fallback"
+      ? "Average fallback rate"
+      : "Saved pickup rate";
 
   return (
     <Card style={styles.card}>
@@ -245,6 +266,32 @@ function TransactionCard({ transaction, role, currentUid }) {
         </View>
       </View>
 
+      <View style={styles.partiesBox}>
+        <View style={styles.partyRow}>
+          <Ionicons name="person-outline" size={14} color="#5e7c74" />
+          <Text style={styles.partyLabel}>Giver</Text>
+          <Text style={styles.partyValue} numberOfLines={1}>
+            {transaction.giverName || shortId(transaction.giverId) || "Unknown giver"}
+          </Text>
+        </View>
+        <View style={styles.partyRow}>
+          <Ionicons name="business-outline" size={14} color="#5e7c74" />
+          <Text style={styles.partyLabel}>Collector</Text>
+          <Text style={styles.partyValue} numberOfLines={1}>
+            {transaction.collectorName || shortId(transaction.collectorId) || "Unknown collector"}
+          </Text>
+        </View>
+        {originalQuantity > 0 && (
+          <View style={styles.partyRow}>
+            <Ionicons name="scale-outline" size={14} color="#5e7c74" />
+            <Text style={styles.partyLabel}>Original claim</Text>
+            <Text style={styles.partyValue}>
+              {originalQuantity} {originalUnit}
+            </Text>
+          </View>
+        )}
+      </View>
+
       {claimedChanged && (
         <View style={styles.verificationBox}>
           <Ionicons name="checkmark-circle-outline" size={17} color="#16874a" />
@@ -257,11 +304,13 @@ function TransactionCard({ transaction, role, currentUid }) {
 
       <View style={styles.metaRow}>
         <Text style={styles.metaText}>
-          {transaction.rateSource === "admin" ? "Admin rate" : "Average fallback rate"}
+          {rateSourceLabel}
         </Text>
-        {!!transaction.pickupId && (
-          <Text style={styles.metaText}>Pickup: {shortId(transaction.pickupId)}</Text>
-        )}
+        <Text style={styles.metaText}>
+          {transaction.pickupId
+            ? `Pickup: ${shortId(transaction.pickupId)}`
+            : `Transaction: ${shortId(transaction.id)}`}
+        </Text>
       </View>
     </Card>
   );
@@ -391,6 +440,15 @@ const styles = {
   valueLabel: { color: "#78918b", fontSize: 8, textTransform: "uppercase" },
   value: { color: "#173a31", fontSize: 12, fontWeight: "800", marginTop: 3 },
   amount: { color: "#16874a", fontSize: 14, fontWeight: "900", marginTop: 3 },
+  partiesBox: {
+    marginTop: 11,
+    padding: 9,
+    borderRadius: 9,
+    backgroundColor: "#f0f7f4",
+  },
+  partyRow: { flexDirection: "row", alignItems: "center", minHeight: 23 },
+  partyLabel: { width: 77, color: "#78918b", fontSize: 9, marginLeft: 6 },
+  partyValue: { flex: 1, color: "#315c50", fontSize: 9, fontWeight: "700", textAlign: "right" },
   verificationBox: {
     flexDirection: "row",
     alignItems: "flex-start",

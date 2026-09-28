@@ -1,24 +1,3 @@
-// import React,{useEffect,useState}from'react';
-// import{Alert,KeyboardAvoidingView,Platform,ScrollView,Text,TextInput,View}from'react-native';
-// import*as Location from'expo-location';
-// import{Btn,Card,Header,Pill}from'../components/UI';
-// import{s}from'../styles';
-// import{saveCollectorDetails}from'../firebase/marketplaceService';
-
-// const MATERIALS=['plastic_pet','cardboard','paper','glass','metal_aluminium','metal_steel','ewaste'];
-// const Input=props=><TextInput {...props} placeholderTextColor="#849c95" style={{height:48,color:'#173a31',borderWidth:1,borderColor:'#d4e3de',borderRadius:9,paddingHorizontal:12,marginBottom:12,backgroundColor:'#fff'}}/>;
-// const Label=({children})=><Text style={{color:'#42695d',fontSize:11,fontWeight:'700',marginBottom:6}}>{children}</Text>;
-
-// export default function CollectorDashboardScreen({user,profile,pickups=[],openPickups=[],accept,status,complete,logout}){
-//  const[businessName,setBusinessName]=useState(''),[ownerName,setOwnerName]=useState(''),[phone,setPhone]=useState(''),[addressLine,setAddressLine]=useState(''),[city,setCity]=useState(''),[state,setState]=useState('Punjab'),[postalCode,setPostalCode]=useState(''),[serviceRadiusKm,setServiceRadiusKm]=useState('10'),[collectorLocation,setCollectorLocation]=useState(null),[gettingLocation,setGettingLocation]=useState(false),[saving,setSaving]=useState(false),[weights,setWeights]=useState({});
-//  useEffect(()=>{setBusinessName(profile?.businessName||'');setOwnerName(profile?.ownerName||profile?.name||'');setPhone(profile?.phone||'');setAddressLine(profile?.addressLine||'');setCity(profile?.city||'');setState(profile?.state||'Punjab');setPostalCode(profile?.postalCode||'');setServiceRadiusKm(String(profile?.serviceRadiusKm||10));if(profile?.location?.latitude&&profile?.location?.longitude)setCollectorLocation(profile.location)},[profile]);
-//  const capture=async()=>{try{setGettingLocation(true);const p=await Location.requestForegroundPermissionsAsync();if(p.status!=='granted')return Alert.alert('Permission required','Allow location so nearby users can find you.');const x=await Location.getCurrentPositionAsync({accuracy:Location.Accuracy.High});setCollectorLocation({latitude:x.coords.latitude,longitude:x.coords.longitude,accuracy:x.coords.accuracy});Alert.alert('Location captured','Your collector location is ready to save.')}catch(e){Alert.alert('Location failed',e.message)}finally{setGettingLocation(false)}};
-//  const save=async()=>{if(!user?.uid)return Alert.alert('Account unavailable');if(!businessName.trim()||!ownerName.trim()||!phone.trim()||!addressLine.trim()||!city.trim()||!postalCode.trim())return Alert.alert('Incomplete details','Fill every required collector detail.');if(!collectorLocation)return Alert.alert('Location required','Capture your GPS location.');const radius=Number(serviceRadiusKm);if(!Number.isFinite(radius)||radius<=0)return Alert.alert('Invalid radius');try{setSaving(true);await saveCollectorDetails(user.uid,{businessName,ownerName,phone,addressLine,city,state,postalCode,serviceRadiusKm:radius,acceptedMaterials:MATERIALS,location:collectorLocation});Alert.alert('Saved','Users can now find this collector after admin approval.')}catch(e){Alert.alert('Save failed',e.message)}finally{setSaving(false)}};
-//  const finish=async id=>{const kg=Number(weights[id]);if(!Number.isFinite(kg)||kg<=0)return Alert.alert('Enter verified weight');try{await complete(id,kg);setWeights(v=>({...v,[id]:''}))}catch(e){Alert.alert('Completion failed',e.message)}};
-//  return <KeyboardAvoidingView style={s.fill} behavior={Platform.OS==='ios'?'padding':undefined}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.page}><Header title="Collector Dashboard"/><Text style={s.title}>{profile?.businessName||'Complete Collector Profile'}</Text><Text style={s.sub}>Account status: {profile?.status||'pending'}</Text>{profile?.status!=='active'&&<Card><Text style={s.whiteTitle}>Approval pending</Text><Text style={s.small}>Save your details and location. An administrator must approve the account before pickups can be accepted.</Text></Card>}<Text style={s.section}>Collector details</Text><Card><Label>Business or collector name</Label><Input value={businessName} onChangeText={setBusinessName} placeholder="Green Earth Recyclers"/><Label>Owner name</Label><Input value={ownerName} onChangeText={setOwnerName} placeholder="Owner full name"/><Label>Phone</Label><Input value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+91 98765 43210"/><Label>Address</Label><Input value={addressLine} onChangeText={setAddressLine} placeholder="Street and area"/><Label>City</Label><Input value={city} onChangeText={setCity} placeholder="Bathinda"/><Label>State</Label><Input value={state} onChangeText={setState}/><Label>Postal code</Label><Input value={postalCode} onChangeText={setPostalCode} keyboardType="number-pad" placeholder="151001"/><Label>Service radius (km)</Label><Input value={serviceRadiusKm} onChangeText={setServiceRadiusKm} keyboardType="decimal-pad"/><Btn outline disabled={gettingLocation} title={gettingLocation?'Getting location…':collectorLocation?'Update GPS Location':'Use Current GPS Location'} onPress={capture}/>{collectorLocation&&<View style={{backgroundColor:'#e7fff0',padding:12,borderRadius:10,marginVertical:12}}><Text style={{color:'#17643d',fontWeight:'700'}}>GPS selected</Text><Text style={{color:'#42705c',fontSize:11}}>{collectorLocation.latitude.toFixed(6)}, {collectorLocation.longitude.toFixed(6)}</Text></View>}<Btn disabled={saving} title={saving?'Saving…':'Save Collector Details'} onPress={save}/></Card>{profile?.status==='active'&&<><Text style={s.section}>Assigned pickups</Text>{!pickups.length&&<Card><Text style={s.whiteTitle}>No assigned pickups</Text></Card>}{pickups.map(p=><Card key={p.id}><View style={s.between}><View><Text style={s.whiteTitle}>{p.materialId}</Text><Text style={s.small}>{p.estimatedKg} kg · ₹{p.estimatedValue||0}</Text></View><Pill text={String(p.status).replaceAll('_',' ')}/></View><View style={{marginTop:12,gap:8}}>{p.status==='accepted'&&<Btn title="Start trip" onPress={()=>status(p.id,'on_the_way')}/>} {p.status==='on_the_way'&&<Btn title="Mark arrived" onPress={()=>status(p.id,'arrived')}/>} {p.status==='arrived'&&<><Input value={weights[p.id]||''} onChangeText={v=>setWeights(x=>({...x,[p.id]:v}))} keyboardType="decimal-pad" placeholder="Verified weight in kg"/><Btn title="Complete pickup" onPress={()=>finish(p.id)}/></>}</View></Card>)}<Text style={s.section}>Open pickup requests</Text>{!openPickups.length&&<Card><Text style={s.whiteTitle}>No open requests</Text></Card>}{openPickups.map(p=><Card key={p.id}><Text style={s.whiteTitle}>{p.materialId} · {p.estimatedKg} kg</Text><Text style={[s.small,{marginBottom:10}]}>Estimated ₹{p.estimatedValue||0}</Text><Btn title="Accept pickup" onPress={()=>accept(p.id)}/></Card>)}</>}<View style={{marginTop:20}}><Btn outline title="Reset guest session" onPress={logout}/></View></ScrollView></KeyboardAvoidingView>
-// }
-
-
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -64,6 +43,8 @@ export default function CollectorDashboardScreen({
   pickups = [],
   openPickups = [],
   transactions = [],
+  unreadCount = 0,
+  go,
   accept,
   decline,
   status,
@@ -119,11 +100,20 @@ export default function CollectorDashboardScreen({
     [openPickups, user?.uid]
   );
   const assignedRequests = pickups.filter((item) => item.status === "requested");
+  const declinedRequests = openPickups.filter((item) =>
+    (item.declinedCollectorIds || []).includes(user?.uid)
+  );
   const newRequests = [...assignedRequests, ...visibleOpenRequests].filter(
     (item, index, list) => list.findIndex((other) => other.id === item.id) === index
   );
   const activeJobs = pickups.filter((item) => ACTIVE_STATUSES.includes(item.status));
   const completedJobs = pickups.filter((item) => item.status === "completed");
+  const responseHistory = [
+    ...pickups.filter((item) => item.status !== "requested"),
+    ...declinedRequests.map((item) => ({ ...item, collectorResponse: "declined" })),
+  ].filter(
+    (item, index, list) => list.findIndex((other) => other.id === item.id) === index
+  );
   const earnings = transactions.reduce(
     (sum, item) => sum + Number(item.amount || 0),
     0
@@ -209,16 +199,24 @@ export default function CollectorDashboardScreen({
     try {
       setBusy(key);
       await action();
-      if (successMessage) Alert.alert("Updated", successMessage);
+      if (successMessage) Alert.alert("Response sent", successMessage);
+      return true;
     } catch (error) {
       Alert.alert("Action failed", error?.message || "Please try again.");
+      return false;
     } finally {
       setBusy(null);
     }
   };
 
-  const acceptRequest = (pickup) =>
-    runAction(`accept-${pickup.id}`, () => accept(pickup.id), "Pickup accepted.");
+  const acceptRequest = async (pickup) => {
+    const accepted = await runAction(
+      `accept-${pickup.id}`,
+      () => accept(pickup.id),
+      "Pickup accepted. The giver has been notified. This pickup is now in Active."
+    );
+    if (accepted) setJobFilter("active");
+  };
 
   const confirmDecline = (pickup) => {
     Alert.alert(
@@ -229,12 +227,14 @@ export default function CollectorDashboardScreen({
         {
           text: "Decline",
           style: "destructive",
-          onPress: () =>
-            runAction(
+          onPress: async () => {
+            const declined = await runAction(
               `decline-${pickup.id}`,
               () => decline(pickup.id, "Collector unavailable"),
-              "Pickup declined."
-            ),
+              "Pickup declined. The giver has been notified and the request was released to other collectors."
+            );
+            if (declined) setJobFilter("responses");
+          },
         },
       ]
     );
@@ -321,7 +321,25 @@ export default function CollectorDashboardScreen({
         contentContainerStyle={s.page}
         showsVerticalScrollIndicator={false}
       >
-        <Header title="Collector Dashboard" />
+        <Header
+          title="Collector Dashboard"
+          right={
+            <TouchableOpacity
+              accessibilityLabel="Open notifications"
+              onPress={() => go?.("notifications")}
+              style={styles.notificationButton}
+            >
+              <Ionicons name="notifications-outline" size={21} color={C.green} />
+              {!!unreadCount && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          }
+        />
 
         <View style={styles.hero}>
           <View style={{ flex: 1 }}>
@@ -434,6 +452,7 @@ export default function CollectorDashboardScreen({
                 ["requests", `Requests (${newRequests.length})`],
                 ["active", `Active (${activeJobs.length})`],
                 ["completed", `Done (${completedJobs.length})`],
+                ["responses", `Responses (${responseHistory.length})`],
               ].map(([id, label]) => (
                 <TouchableOpacity
                   key={id}
@@ -509,6 +528,19 @@ export default function CollectorDashboardScreen({
                 ) : (
                   completedJobs.map((pickup) => (
                     <PickupSummary key={pickup.id} pickup={pickup} />
+                  ))
+                )}
+              </>
+            )}
+
+            {jobFilter === "responses" && (
+              <>
+                <Text style={s.section}>Responses sent to givers</Text>
+                {!responseHistory.length ? (
+                  <Empty text="Accepted and declined responses will appear here." />
+                ) : (
+                  responseHistory.map((pickup) => (
+                    <CollectorResponseCard key={pickup.id} pickup={pickup} />
                   ))
                 )}
               </>
@@ -746,10 +778,47 @@ function ActivePickupCard({
   );
 }
 
+function CollectorResponseCard({ pickup }) {
+  const declined = pickup.collectorResponse === "declined";
+  const responseStatus = declined ? "DECLINED" : String(pickup.status || "accepted").replace(/_/g, " ").toUpperCase();
+  return (
+    <Card style={declined ? styles.declinedResponseCard : styles.acceptedResponseCard}>
+      <View style={s.between}>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={s.whiteTitle}>{formatMaterial(pickup.materialId)}</Text>
+          <Text style={styles.cardMuted}>{formatQuantity(pickup)}</Text>
+        </View>
+        <Pill text={responseStatus} solid={!declined} />
+      </View>
+      <View style={styles.responseMessage}>
+        <Ionicons
+          name={declined ? "close-circle-outline" : "checkmark-circle-outline"}
+          size={18}
+          color={declined ? "#a45c38" : "#16874a"}
+        />
+        <Text style={styles.responseMessageText}>
+          {declined
+            ? "Decline response sent. The request is open for other collectors."
+            : pickup.status === "completed"
+            ? "Accepted response sent and pickup completed."
+            : "Accepted response sent to the giver. This pickup is visible in Active."}
+        </Text>
+      </View>
+      <Text style={[styles.cardMuted, { marginTop: 8 }]}>Updated {formatDate(pickup.updatedAt || pickup.createdAt)}</Text>
+    </Card>
+  );
+}
+
 function PickupDetails({ pickup }) {
   const address = formatAddress(pickup.address);
   return (
     <View style={styles.detailsBox}>
+      {!!pickup.giverName && (
+        <Detail icon="person-outline" text={`Giver: ${pickup.giverName}`} />
+      )}
+      {!!pickup.giverPhone && (
+        <Detail icon="call-outline" text={`Phone: ${pickup.giverPhone}`} />
+      )}
       <Detail icon="pricetag-outline" text={`Rate: ₹${Number(pickup.ratePerKg || 0).toFixed(2)}/kg`} />
       {!!address && <Detail icon="location-outline" text={address} />}
       <Detail icon="time-outline" text={`Requested ${formatDate(pickup.createdAt)}`} />
@@ -886,6 +955,27 @@ function formatDate(value) {
 }
 
 const styles = {
+  notificationButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(32,211,90,.10)",
+  },
+  notificationBadge: {
+    position: "absolute",
+    right: -5,
+    top: -5,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+    backgroundColor: C.red,
+  },
+  notificationBadgeText: { color: "#fff", fontSize: 7, fontWeight: "900" },
   hero: {
     flexDirection: "row",
     alignItems: "center",
@@ -980,6 +1070,23 @@ const styles = {
     marginTop: 8,
   },
   mapText: { color: "#16874a", fontSize: 11, fontWeight: "700", marginLeft: 5 },
+  acceptedResponseCard: { borderWidth: 1, borderColor: C.green },
+  declinedResponseCard: { borderWidth: 1, borderColor: "#d7a27d" },
+  responseMessage: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 11,
+    padding: 9,
+    borderRadius: 8,
+    backgroundColor: "#eef8f2",
+  },
+  responseMessageText: {
+    flex: 1,
+    color: "#54736c",
+    fontSize: 9,
+    lineHeight: 14,
+    marginLeft: 7,
+  },
   detailsBox: {
     marginTop: 11,
     paddingTop: 9,
