@@ -2,7 +2,7 @@
   "expo": {
     "name": "Trash2Treasure",
     "slug": "to-do-list",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/trash2treasure-icon.png",
     "scheme": "todolist",

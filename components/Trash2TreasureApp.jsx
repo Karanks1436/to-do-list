@@ -61,6 +61,34 @@ import UpdateModal from "../src/update/UpdateModal";
 import { C } from "../src/theme";
 import { s } from "../src/styles";
 
+class ScreenErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("Screen render failed:", error, info?.componentStack);
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: C.bg }}>
+        <Ionicons name="alert-circle-outline" size={42} color={C.red} />
+        <Text style={{ color: C.text, fontSize: 18, fontWeight: "900", marginTop: 13 }}>Dashboard could not render</Text>
+        <Text style={{ color: C.muted, fontSize: 10, lineHeight: 16, textAlign: "center", marginTop: 7 }}>
+          {this.state.error?.message || "An unexpected display error occurred."}
+        </Text>
+        <TouchableOpacity onPress={() => this.setState({ error: null })} style={{ height: 44, minWidth: 130, alignItems: "center", justifyContent: "center", marginTop: 17, borderRadius: 10, backgroundColor: C.green }}>
+          <Text style={{ color: C.bg, fontWeight: "900" }}>Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+}
+
 const TAB_ROUTES = {
   home: "home",
   scan: "scan",
@@ -790,22 +818,24 @@ export default function Trash2TreasureApp() {
     );
   } else if (profile?.role === "collector") {
     screen = (
-      <CollectorDashboardScreen
-        user={user}
-        profile={profile}
-        pickups={pickups}
-        openPickups={openPickups}
-        declinedPickups={declinedPickups}
-        transactions={transactions}
-        unreadCount={notices.filter((item) => !item.read).length}
-        syncError={pickupSyncError || transactionSyncError}
-        go={go}
-        accept={acceptPickup}
-        decline={declinePickup}
-        status={updatePickupStatus}
-        complete={completePickup}
-        logout={logoutUser}
-      />
+      <ScreenErrorBoundary>
+        <CollectorDashboardScreen
+          user={user}
+          profile={profile}
+          pickups={pickups}
+          openPickups={openPickups}
+          declinedPickups={declinedPickups}
+          transactions={transactions}
+          unreadCount={notices.filter((item) => !item.read).length}
+          syncError={pickupSyncError || transactionSyncError}
+          go={go}
+          accept={acceptPickup}
+          decline={declinePickup}
+          status={updatePickupStatus}
+          complete={completePickup}
+          logout={logoutUser}
+        />
+      </ScreenErrorBoundary>
     );
   } else if (route === "home") {
     screen = (
@@ -814,6 +844,7 @@ export default function Trash2TreasureApp() {
         profile={displayProfile}
         pickups={pickups}
         unreadCount={notices.filter((item) => !item.read).length}
+        syncError={pickupSyncError || transactionSyncError}
       />
     );
   } else if (route === "scan") {

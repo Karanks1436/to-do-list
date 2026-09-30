@@ -167,12 +167,30 @@ export async function completeRegistration({
 export async function approveCollector(collectorId) {
   if (!isAdmin()) throw new Error("Admin access required.");
 
+  const locationReference = doc(db, "collectorLocations", collectorId);
+  const locationSnapshot = await getDoc(locationReference);
+  const savedLocation = locationSnapshot.data() || {};
+
   await updateDoc(doc(db, "users", collectorId), {
     status: "active",
     approvedBy: currentUid(),
     approvedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await setDoc(
+    locationReference,
+    {
+      collectorId,
+      role: "collector",
+      status: "active",
+      approved: true,
+      active:
+        locationSnapshot.exists() &&
+        savedLocation.availableForPickups !== false,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   await sendNotification({
     userId: collectorId,
@@ -292,6 +310,55 @@ export async function createPickupRequest(data) {
     estimatedValue,
     status: pickup.status,
   };
+}
+
+export async function reassignPickup(pickupId, collector) {
+  const giverId = currentUid();
+  if (!collector?.id) throw new Error("Select a collector.");
+  let estimatedValue = 0;
+
+  await runTransaction(db, async (transaction) => {
+    const reference = doc(db, "pickupRequests", pickupId);
+    const snapshot = await transaction.get(reference);
+    if (!snapshot.exists()) throw new Error("Pickup not found.");
+    const pickup = snapshot.data();
+    if (pickup.giverId !== giverId) throw new Error("This is not your pickup.");
+    if (pickup.status !== "open") {
+      throw new Error("Only an open request can be sent to another collector.");
+    }
+    if ((pickup.declinedCollectorIds || []).includes(collector.id)) {
+      throw new Error("This collector already declined this request.");
+    }
+
+    estimatedValue = Number(pickup.estimatedValue || 0);
+    transaction.update(reference, {
+      collectorId: collector.id,
+      requestedCollectorId: collector.id,
+      collectorName: collector.name || "Collector",
+      status: "requested",
+      timeline: [
+        ...(pickup.timeline || []),
+        {
+          status: "requested",
+          at: new Date().toISOString(),
+          by: giverId,
+          collectorId: collector.id,
+        },
+      ],
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await sendNotification({
+    userId: collector.id,
+    senderId: giverId,
+    pickupId,
+    type: "pickup_request",
+    title: "New pickup request",
+    body: "A nearby giver sent you an open pickup request.",
+  });
+
+  return { id: pickupId, status: "requested", estimatedValue };
 }
 
 export async function acceptPickup(pickupId) {
@@ -598,6 +665,8 @@ export async function completePickup(pickupId, verification) {
 
 export async function saveCollectorDetails(uid, details) {
   if (uid !== currentUid()) throw new Error("Not allowed.");
+  const profileSnapshot = await getDoc(doc(db, "users", uid));
+  const currentProfile = profileSnapshot.data() || {};
 
   const data = {
     businessName: details.businessName.trim(),
@@ -625,10 +694,26 @@ export async function saveCollectorDetails(uid, details) {
     doc(db, "collectorLocations", uid),
     {
       collectorId: uid,
+      role: "collector",
+      status: currentProfile.status || "pending",
+      approved: currentProfile.status === "active",
+      name: currentProfile.name || data.ownerName,
       businessName: data.businessName,
-      ...data.location,
+      ownerName: data.ownerName,
+      phone: data.phone,
+      addressLine: data.addressLine,
+      city: data.city,
+      state: data.state,
+      postalCode: data.postalCode,
+      acceptedMaterials: data.acceptedMaterials,
+      availableForPickups: data.availableForPickups,
+      location: data.location,
+      latitude: data.location.latitude,
+      longitude: data.location.longitude,
+      accuracy: data.location.accuracy,
       serviceRadiusKm: data.serviceRadiusKm,
-      active: data.availableForPickups,
+      active:
+        currentProfile.status === "active" && data.availableForPickups,
       updatedAt: serverTimestamp(),
     },
     { merge: true }
@@ -649,14 +734,100 @@ export const watchProfile = (uid, callback, error) =>
 export const watchCurrentRates = (callback, error) =>
   listen(collection(db, "currentRates"), callback, error);
 
-export const watchApprovedCollectors = (callback, error) =>
-  listen(
-    query(collection(db, "users"), where("role", "==", "collector")),
-    callback,
-    error,
-    (item) =>
-      item.status === "active" && item.availableForPickups !== false
+export function watchApprovedCollectors(callback, error) {
+  // Read both the public location projection and active collector profiles.
+  // This keeps older approved accounts visible even when collectorLocations
+  // was never created, while newly saved projection data remains preferred.
+  let projected = [];
+  let profiles = [];
+
+  const normalize = (item) => {
+    const rawLocation = item.location || item.coordinates || {};
+    const latitude = Number(
+      rawLocation.latitude ?? rawLocation.lat ?? item.latitude
+    );
+    const longitude = Number(
+      rawLocation.longitude ?? rawLocation.lng ?? item.longitude
+    );
+    const hasLocation =
+      Number.isFinite(latitude) && Number.isFinite(longitude);
+
+    return {
+      ...item,
+      id: item.id || item.collectorId || item.uid,
+      collectorId: item.collectorId || item.uid || item.id,
+      location: hasLocation
+        ? { ...rawLocation, latitude, longitude }
+        : null,
+    };
+  };
+
+  const publish = () => {
+    const merged = new Map();
+
+    profiles.forEach((item) => {
+      const collector = normalize(item);
+      if (
+        collector.id &&
+        collector.role === "collector" &&
+        collector.status === "active" &&
+        !["blocked", "removed"].includes(collector.accountStatus) &&
+        collector.availableForPickups !== false
+      ) {
+        merged.set(collector.id, collector);
+      }
+    });
+
+    projected.forEach((item) => {
+      const collector = normalize(item);
+      if (
+        collector.id &&
+        collector.role === "collector" &&
+        collector.status === "active" &&
+        !["blocked", "removed"].includes(collector.accountStatus) &&
+        collector.approved !== false &&
+        collector.active !== false &&
+        collector.availableForPickups !== false
+      ) {
+        merged.set(collector.id, {
+          ...(merged.get(collector.id) || {}),
+          ...collector,
+        });
+      }
+    });
+
+    callback([...merged.values()]);
+  };
+
+  const unsubscribeLocations = onSnapshot(
+    collection(db, "collectorLocations"),
+    (snapshot) => {
+      projected = snapshotList(snapshot);
+      publish();
+    },
+    (listenerError) => error?.(listenerError)
   );
+
+  // Both constraints are important: Firestore rules can prove that every
+  // possible result is an approved/active collector profile.
+  const unsubscribeProfiles = onSnapshot(
+    query(
+      collection(db, "users"),
+      where("role", "==", "collector"),
+      where("status", "==", "active")
+    ),
+    (snapshot) => {
+      profiles = snapshotList(snapshot);
+      publish();
+    },
+    (listenerError) => error?.(listenerError)
+  );
+
+  return () => {
+    unsubscribeLocations?.();
+    unsubscribeProfiles?.();
+  };
+}
 
 export const watchGiverPickups = (uid, callback, error) =>
   listen(
@@ -678,6 +849,16 @@ export const watchCollectorPickups = (uid, callback, error) =>
 export const watchOpenPickups = (callback, error) =>
   listen(
     query(collection(db, "pickupRequests"), where("status", "==", "open")),
+    callback,
+    error
+  );
+
+export const watchDeclinedPickups = (uid, callback, error) =>
+  listen(
+    query(
+      collection(db, "pickupRequests"),
+      where("declinedCollectorIds", "array-contains", uid)
+    ),
     callback,
     error
   );

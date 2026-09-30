@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Linking, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Header } from "../components/UI";
@@ -25,6 +25,18 @@ export default function NotificationsScreen({
 
   const openNotification = async (item) => {
     if (!item.read) await markRead?.(item.id);
+    if (item.type === "app_update") {
+      const url = String(item.downloadUrl || "").trim();
+      if (!/^https:\/\//i.test(url)) {
+        return Alert.alert("Download unavailable", "The administrator has not configured a valid update link.");
+      }
+      try {
+        await Linking.openURL(url);
+      } catch (error) {
+        Alert.alert("Unable to open update", error?.message || "The download link could not be opened.");
+      }
+      return;
+    }
     if (item.pickupId) go("tracking");
   };
 
@@ -103,8 +115,12 @@ export default function NotificationsScreen({
               <Text style={styles.noticeBody}>{item.body || "You have a new update."}</Text>
               <Text style={styles.noticeTime}>{formatDate(item.createdAt)}</Text>
             </View>
-            {!!item.pickupId && (
-              <Ionicons name="chevron-forward" size={18} color="#78918b" />
+            {!!(item.pickupId || item.type === "app_update") && (
+              <Ionicons
+                name={item.type === "app_update" ? "download-outline" : "chevron-forward"}
+                size={18}
+                color={item.type === "app_update" ? C.green : "#78918b"}
+              />
             )}
           </TouchableOpacity>
         ))
@@ -123,6 +139,7 @@ function notificationIcon(type) {
     pickup_completed: "leaf-outline",
     collector_pending: "person-add-outline",
     collector_approved: "shield-checkmark-outline",
+    app_update: "cloud-download-outline",
   };
   return icons[type] || "notifications-outline";
 }

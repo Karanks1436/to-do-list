@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { useMemo, useState } from "react";
 import {
   Alert,
   Modal,
@@ -8,27 +10,26 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
 
 import { Btn, Card, Header, Pill } from "../components/UI";
 import { auth, db } from "../firebase/firebase";
-import { C } from "../theme";
 import { s } from "../styles";
+import { C } from "../theme";
+import { publishAndroidUpdate } from "../update/updateService";
 
 const DEFAULT_MATERIALS = [
   { id: "plastic_pet", name: "PET Plastic", rate: "12" },
   { id: "plastic_hdpe", name: "HDPE Plastic", rate: "10" },
-  { id: "plastic_other", name: "Other Plastic", rate: "8" },
+  { id: "mixed_plastic", name: "Mixed Plastic", rate: "8" },
   { id: "paper", name: "Paper", rate: "8" },
   { id: "cardboard", name: "Cardboard", rate: "7" },
   { id: "newspaper", name: "Newspaper", rate: "9" },
   { id: "glass", name: "Glass", rate: "6" },
-  { id: "iron", name: "Iron", rate: "30" },
-  { id: "steel", name: "Steel", rate: "28" },
-  { id: "aluminium", name: "Aluminium", rate: "120" },
-  { id: "copper", name: "Copper", rate: "600" },
-  { id: "electronics", name: "E-Waste", rate: "80" },
+  { id: "metal_iron", name: "Iron", rate: "30" },
+  { id: "metal_steel", name: "Steel", rate: "28" },
+  { id: "metal_aluminium", name: "Aluminium", rate: "120" },
+  { id: "metal_copper", name: "Copper", rate: "600" },
+  { id: "ewaste", name: "E-Waste", rate: "80" },
 ];
 
 export default function AdminScreen({
@@ -49,6 +50,13 @@ export default function AdminScreen({
   const [search, setSearch] = useState("");
   const [expandedUserId, setExpandedUserId] = useState(null);
   const [updatingUserId, setUpdatingUserId] = useState(null);
+  const [latestVersion, setLatestVersion] = useState("1.0.1");
+  const [minimumVersion, setMinimumVersion] = useState("1.0.0");
+  const [updateTitle, setUpdateTitle] = useState("New Trash2Treasure update");
+  const [updateMessage, setUpdateMessage] = useState("Download the latest version for improvements and fixes.");
+  const [downloadUrl, setDownloadUrl] = useState("");
+  const [forceUpdate, setForceUpdate] = useState(false);
+  const [publishingUpdate, setPublishingUpdate] = useState(false);
 
   const safePending = Array.isArray(pending) ? pending.filter(Boolean) : [];
   const safeUsers = Array.isArray(users) ? users.filter(Boolean) : [];
@@ -199,6 +207,28 @@ export default function AdminScreen({
     ]);
   };
 
+  const publishUpdate = async () => {
+    try {
+      setPublishingUpdate(true);
+      const result = await publishAndroidUpdate({
+        latestVersion,
+        minSupportedVersion: minimumVersion,
+        title: updateTitle,
+        message: updateMessage,
+        downloadUrl,
+        force: forceUpdate,
+      });
+      Alert.alert(
+        "Update published",
+        `Version ${result.version} is live. ${result.recipientCount} user notification${result.recipientCount === 1 ? " was" : "s were"} created.`
+      );
+    } catch (error) {
+      Alert.alert("Publish failed", error?.message || "Unable to publish the update.");
+    } finally {
+      setPublishingUpdate(false);
+    }
+  };
+
   return (
     <ScrollView
       contentContainerStyle={s.page}
@@ -298,6 +328,97 @@ export default function AdminScreen({
           disabled={savingRate}
           title={savingRate ? "Updating Price…" : "Update Selected Price"}
           onPress={publishSelectedRate}
+        />
+      </Card>
+
+      <Text style={s.section}>Publish Android Update</Text>
+      <Card>
+        <View style={styles.updateHeader}>
+          <View style={styles.updateIcon}>
+            <Ionicons name="cloud-upload-outline" size={23} color="#16874a" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Realtime app update</Text>
+            <Text style={styles.meta}>Save the latest APK/website link in Firebase and notify all users.</Text>
+          </View>
+        </View>
+
+        <View style={styles.versionRow}>
+          <View style={{ flex: 1, marginRight: 4 }}>
+            <Text style={styles.label}>Latest version</Text>
+            <TextInput
+              style={styles.input}
+              value={latestVersion}
+              onChangeText={setLatestVersion}
+              placeholder="1.2.0"
+              placeholderTextColor="#82968f"
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={{ flex: 1, marginLeft: 4 }}>
+            <Text style={styles.label}>Minimum version</Text>
+            <TextInput
+              style={styles.input}
+              value={minimumVersion}
+              onChangeText={setMinimumVersion}
+              placeholder="1.0.0"
+              placeholderTextColor="#82968f"
+              autoCapitalize="none"
+            />
+          </View>
+        </View>
+
+        <Text style={styles.label}>Popup title</Text>
+        <TextInput
+          style={styles.input}
+          value={updateTitle}
+          onChangeText={setUpdateTitle}
+          placeholder="New version available"
+          placeholderTextColor="#82968f"
+        />
+
+        <Text style={styles.label}>Update message</Text>
+        <TextInput
+          style={[styles.input, styles.messageInput]}
+          value={updateMessage}
+          onChangeText={setUpdateMessage}
+          placeholder="Describe the changes"
+          placeholderTextColor="#82968f"
+          multiline
+        />
+
+        <Text style={styles.label}>HTTPS download link</Text>
+        <TextInput
+          style={styles.input}
+          value={downloadUrl}
+          onChangeText={setDownloadUrl}
+          placeholder="https://example.com/Trash2Treasure.apk"
+          placeholderTextColor="#82968f"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
+
+        <TouchableOpacity
+          onPress={() => setForceUpdate((value) => !value)}
+          style={[styles.forceRow, forceUpdate && styles.forceRowOn]}
+        >
+          <Ionicons
+            name={forceUpdate ? "checkbox" : "square-outline"}
+            size={21}
+            color={forceUpdate ? "#16874a" : "#78918b"}
+          />
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={styles.forceTitle}>Required update</Text>
+            <Text style={styles.meta}>Users cannot dismiss the update popup.</Text>
+          </View>
+        </TouchableOpacity>
+
+        <Btn
+          icon="notifications-outline"
+          disabled={publishingUpdate}
+          title={publishingUpdate ? "Publishing & Notifying…" : "Publish Update to All Users"}
+          onPress={publishUpdate}
         />
       </Card>
 
@@ -570,6 +691,30 @@ const styles = {
   currency: { color: "#16874a", fontSize: 19, fontWeight: "900" },
   rateField: { flex: 1, height: 50, color: "#173a31", fontSize: 18, fontWeight: "900", paddingHorizontal: 8 },
   perKg: { color: "#78918b", fontSize: 10 },
+  updateHeader: { flexDirection: "row", alignItems: "center", marginBottom: 13 },
+  updateIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 9,
+    backgroundColor: "#ddf8e6",
+  },
+  versionRow: { flexDirection: "row" },
+  messageInput: { height: 78, paddingTop: 11, textAlignVertical: "top" },
+  forceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    marginBottom: 12,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "#d8e4e0",
+    backgroundColor: "#f1f6f4",
+  },
+  forceRowOn: { borderColor: C.green, backgroundColor: "#e4fbea" },
+  forceTitle: { color: "#173a31", fontSize: 10, fontWeight: "900" },
   searchBox: {
     height: 48,
     flexDirection: "row",
